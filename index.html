@@ -248,6 +248,11 @@
     .face-bar { display: flex; flex-wrap: nowrap; }
     .face-btn { min-height: 32px; }
   }
+  #mobile-controls { display: none; }
+  @media (pointer: coarse) {
+    #mobile-controls { position: fixed; right: max(8px, env(safe-area-inset-right)); bottom: calc(155px + env(safe-area-inset-bottom)); z-index: 21; display: flex; flex-direction: column; gap: 6px; }
+    #mobile-controls button { min-width: 44px; min-height: 44px; padding: 6px 10px; border: 1px solid var(--border); border-radius: 10px; color: var(--ink); background: var(--panel); font: inherit; }
+  }
   #loader {
     position: fixed; inset: 0; z-index: 100; background: #090c12;
     display: flex; flex-direction: column; align-items: center; justify-content: center; gap: 12px;
@@ -342,6 +347,11 @@
   • 鍵盤 <b>1 ~ 6</b> 快速切換各面 · <b>0</b> 重置視角
 </div>
 
+<div id="mobile-controls" aria-label="手機操作">
+  <button id="sound-test" type="button">🔊 測試聲音</button>
+  <button id="zoom-in" type="button" aria-label="放大魔方">＋</button>
+  <button id="zoom-out" type="button" aria-label="縮小魔方">－</button>
+</div>
 <div id="bottom-dock">
   <div id="hover-toast" class="dim">將滑鼠移至魔方六面機關即可互動 · 拖曳空白處旋轉角度</div>
   <div class="face-bar" id="faceBar">
@@ -398,6 +408,7 @@ class SoundEngine {
     const AC = window.AudioContext || window.webkitAudioContext;
     if (!AC) return;
     this.ctx = new AC();
+    if (this.ctx.state !== 'running') this.ctx.resume().catch(() => {});
     this.comp = this.ctx.createDynamicsCompressor();
     this.comp.threshold.value = -14;
     this.comp.knee.value = 18;
@@ -604,6 +615,18 @@ function unlockAudio() {
 }
 document.addEventListener('pointerdown', unlockAudio, { capture: true });
 document.addEventListener('keydown', unlockAudio, { capture: true });
+document.addEventListener('touchend', unlockAudio, { capture: true, passive: true });
+document.getElementById('sound-test').addEventListener('click', async () => {
+  SFX.setEnabled(true);
+  document.getElementById('tgSound').checked = true;
+  unlockAudio();
+  if (!SFX.ctx) { document.getElementById('sound-test').textContent = '音訊不支援'; return; }
+  try {
+    if (SFX.ctx.state !== 'running') await SFX.ctx.resume();
+    SFX.playKey(true, 0);
+    document.getElementById('sound-test').textContent = SFX.ctx.state === 'running' ? '🔊 測試聲音' : '🔊 點擊啟用';
+  } catch (_) { document.getElementById('sound-test').textContent = '🔊 點擊啟用'; }
+});
 
 /* ============================================================================
    2. PROCEDURAL CANVAS TEXTURES (Studio Env, Woodgrain, Keycap Legends, Trackball)
@@ -1075,6 +1098,13 @@ scene.environment = makeStudioEnvironment(renderer);
 
 const camera = new THREE.PerspectiveCamera(36, innerWidth / innerHeight, 0.1, 120);
 camera.position.set(6.2, 4.9, 6.8);
+function updateCameraProjection() {
+  camera.aspect = innerWidth / innerHeight;
+  const scale = Math.max(1, 0.85 / camera.aspect);
+  camera.fov = THREE.MathUtils.radToDeg(2 * Math.atan(Math.tan(THREE.MathUtils.degToRad(36) / 2) * scale));
+  camera.updateProjectionMatrix();
+}
+updateCameraProjection();
 
 const controls = new THREE.OrbitControls(camera, canvas);
 controls.target.set(0, 0, 0);
@@ -1084,6 +1114,16 @@ controls.minDistance = 4.6;
 controls.maxDistance = 18;
 controls.autoRotate = false;
 controls.autoRotateSpeed = 1.1;
+controls.maxDistance = 30;
+function zoomCamera(factor) {
+  camTween = null;
+  const offset = camera.position.clone().sub(controls.target);
+  const distance = THREE.MathUtils.clamp(offset.length() * factor, controls.minDistance, controls.maxDistance);
+  camera.position.copy(controls.target).add(offset.setLength(distance));
+  controls.update();
+}
+document.getElementById('zoom-in').addEventListener('click', () => zoomCamera(0.8));
+document.getElementById('zoom-out').addEventListener('click', () => zoomCamera(1.25));
 
 // Studio 3-point lighting
 scene.add(new THREE.HemisphereLight(lin(0xcbd9f5), lin(0x1f1912), 0.36));
@@ -1930,7 +1970,12 @@ function togglePopDome(d) {
   }
 }
 
+const touchPointers = new Set();
 canvas.addEventListener('pointerdown', (e) => {
+  if (e.pointerType === 'touch') {
+    touchPointers.add(e.pointerId);
+    if (touchPointers.size > 1) { releaseDrag(); return; }
+  }
   SFX.init();
   setNDC(e);
   raycaster.setFromCamera(ndc, camera);
@@ -2015,6 +2060,7 @@ function updateStickFromPointer() {
 }
 
 canvas.addEventListener('pointermove', (e) => {
+  if (touchPointers.size > 1) return;
   setNDC(e);
   if (!activeDrag) {
     raycaster.setFromCamera(ndc, camera);
@@ -2158,8 +2204,16 @@ function releaseDrag(e) {
   controls.enabled = true;
   canvas.style.cursor = hoverMeta ? 'grab' : 'default';
 }
-canvas.addEventListener('pointerup', releaseDrag);
-canvas.addEventListener('pointercancel', releaseDrag);
+canvas.addEventListener('touchstart', (e) => {
+  if (e.touches.length > 1) releaseDrag();
+}, { capture: true, passive: true });
+function endPointer(e) {
+  const multiTouch = touchPointers.size > 1;
+  touchPointers.delete(e.pointerId);
+  if (!multiTouch) releaseDrag(e);
+}
+canvas.addEventListener('pointerup', endPointer);
+canvas.addEventListener('pointercancel', endPointer);
 
 // Keyboard support for Top Switches (Q/W/E/R) and Face Cameras (0..6)
 const KEY_MAP = { KeyQ: 0, KeyW: 1, KeyE: 2, KeyR: 3 };
@@ -2547,8 +2601,7 @@ function animate(now) {
 }
 
 window.addEventListener('resize', () => {
-  camera.aspect = innerWidth / innerHeight;
-  camera.updateProjectionMatrix();
+  updateCameraProjection();
   renderer.setSize(innerWidth, innerHeight);
   composer.setSize(innerWidth, innerHeight);
   bloomPass.setSize(innerWidth, innerHeight);
