@@ -2,7 +2,7 @@
 <html lang="zh-TW">
 <head>
 <meta charset="UTF-8">
-<meta name="viewport" content="width=device-width, initial-scale=1.0, user-scalable=no">
+<meta name="viewport" content="width=device-width, initial-scale=1.0, viewport-fit=cover">
 <title>TACTILE-06 // 精密機械舒壓魔方 · Interactive 3D Fidget Cube</title>
 <script src="libs/three.min.js"></script>
 <script src="libs/Pass.js"></script>
@@ -225,6 +225,29 @@
   }
   #fx-banner.show { opacity: 1; transform: translateX(-50%) translateY(0); }
 
+  @media (max-width: 600px) {
+    #hud-top { top: max(8px, env(safe-area-inset-top)); left: max(8px, env(safe-area-inset-left)); right: 112px; }
+    .brand-card { min-width: 0; padding: 8px 10px; }
+    .brand-title { font-size: 12px; gap: 4px; }
+    .brand-title span { font-size: 9px !important; }
+    .brand-sub { font-size: 10px; }
+    .zen-row { margin-top: 5px; padding-top: 5px; font-size: 11px; }
+    #studio-wrap { top: max(8px, env(safe-area-inset-top)); right: max(8px, env(safe-area-inset-right)); }
+    #toggle-panel-btn { min-height: 44px; padding: 8px; }
+    #studio-panel { width: min(306px, calc(100vw - 16px)); max-height: calc(100dvh - 72px - env(safe-area-inset-top)); overscroll-behavior: contain; }
+    .btn-chip, .seg-btn, .action-btn, .tg-item { min-height: 40px; }
+    #bottom-dock { bottom: max(8px, env(safe-area-inset-bottom)); width: calc(100% - 16px); max-width: 480px; }
+    .face-bar { width: 100%; display: grid; grid-template-columns: repeat(3, minmax(0, 1fr)); gap: 2px; }
+    .face-btn { justify-content: center; min-height: 40px; padding: 5px 3px; }
+    .kbd-tag { display: none; }
+    #hover-toast { max-width: 100%; overflow: hidden; text-overflow: ellipsis; }
+  }
+  @media (max-height: 500px) and (orientation: landscape) {
+    .brand-sub, .zen-row, #hover-toast { display: none; }
+    #bottom-dock { bottom: 4px; }
+    .face-bar { display: flex; flex-wrap: nowrap; }
+    .face-btn { min-height: 32px; }
+  }
   #loader {
     position: fixed; inset: 0; z-index: 100; background: #090c12;
     display: flex; flex-direction: column; align-items: center; justify-content: center; gap: 12px;
@@ -367,7 +390,9 @@ class SoundEngine {
 
   init() {
     if (this.ctx) {
-      if (this.ctx.state === 'suspended') this.ctx.resume();
+      if (this.ctx.state === 'suspended' || this.ctx.state === 'interrupted') {
+        this.ctx.resume().catch(() => {});
+      }
       return;
     }
     const AC = window.AudioContext || window.webkitAudioContext;
@@ -567,6 +592,18 @@ class SoundEngine {
   }
 }
 const SFX = new SoundEngine();
+// Unlock or resume audio directly within a user gesture, including after interruptions.
+function unlockAudio() {
+  if (!SFX.enabled) return;
+  SFX.init();
+  if (!SFX.ctx) return;
+  const source = SFX.ctx.createBufferSource();
+  source.buffer = SFX.ctx.createBuffer(1, 1, SFX.ctx.sampleRate);
+  source.connect(SFX.ctx.destination);
+  source.start();
+}
+document.addEventListener('pointerdown', unlockAudio, { capture: true });
+document.addEventListener('keydown', unlockAudio, { capture: true });
 
 /* ============================================================================
    2. PROCEDURAL CANVAS TEXTURES (Studio Env, Woodgrain, Keycap Legends, Trackball)
