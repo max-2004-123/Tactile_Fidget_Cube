@@ -225,33 +225,36 @@
   }
   #fx-banner.show { opacity: 1; transform: translateX(-50%) translateY(0); }
 
-  @media (max-width: 600px) {
-    #hud-top { top: max(8px, env(safe-area-inset-top)); left: max(8px, env(safe-area-inset-left)); right: 112px; }
-    .brand-card { min-width: 0; padding: 8px 10px; }
+  #mobile-controls, .face-scroll-hint { display: none; }
+  @media (max-width: 860px) {
+    #hud-top { top: max(8px, env(safe-area-inset-top)); left: max(8px, env(safe-area-inset-left)); right: 120px; }
+    .brand-card { min-width: 0; max-width: 270px; padding: 9px 11px; }
     .brand-title { font-size: 12px; gap: 4px; }
-    .brand-title span { font-size: 9px !important; }
-    .brand-sub { font-size: 10px; }
+    .brand-title span:last-child { font-size: 9px !important; }
+    .brand-sub { display: none; }
     .zen-row { margin-top: 5px; padding-top: 5px; font-size: 11px; }
     #studio-wrap { top: max(8px, env(safe-area-inset-top)); right: max(8px, env(safe-area-inset-right)); }
-    #toggle-panel-btn { min-height: 44px; padding: 8px; }
+    #toggle-panel-btn { min-height: 44px; padding: 8px 12px; }
     #studio-panel { width: min(306px, calc(100vw - 16px)); max-height: calc(100dvh - 72px - env(safe-area-inset-top)); overscroll-behavior: contain; }
-    .btn-chip, .seg-btn, .action-btn, .tg-item { min-height: 40px; }
-    #bottom-dock { bottom: max(8px, env(safe-area-inset-bottom)); width: calc(100% - 16px); max-width: 480px; }
-    .face-bar { width: 100%; display: grid; grid-template-columns: repeat(3, minmax(0, 1fr)); gap: 2px; }
-    .face-btn { justify-content: center; min-height: 40px; padding: 5px 3px; }
+    .btn-chip, .seg-btn, .action-btn, .tg-item { min-height: 44px; }
+    #bottom-dock { bottom: max(8px, env(safe-area-inset-bottom)); left: max(8px, env(safe-area-inset-left)); right: max(8px, env(safe-area-inset-right)); transform: none; width: auto; max-width: none; align-items: stretch; gap: 6px; }
+    #hover-toast { display: none; }
+    #mobile-controls { display: flex; justify-content: space-between; align-items: center; gap: 8px; pointer-events: none; }
+    #mobile-controls button { pointer-events: auto; min-width: 44px; min-height: 44px; border: 1px solid var(--border); border-radius: 12px; color: var(--ink); background: rgba(15,19,28,.94); font-family: inherit; font-size: 13px; font-weight: 600; cursor: pointer; }
+    #sound-test { padding: 0 14px; }
+    .zoom-controls { pointer-events: auto; display: flex; align-items: center; gap: 4px; padding: 3px; border: 1px solid var(--border); border-radius: 14px; background: rgba(15,19,28,.94); }
+    .zoom-controls button { border: 0 !important; background: transparent !important; font-size: 22px !important; }
+    .zoom-controls span { color: var(--muted); font-size: 11px; }
+    .face-scroll-hint { display: block; padding: 0 5px; color: var(--ink); font-size: 11px; text-shadow: 0 1px 4px #000; }
+    .face-bar { width: 100%; justify-content: flex-start; flex-wrap: nowrap; gap: 4px; overflow-x: auto; overscroll-behavior-x: contain; -webkit-overflow-scrolling: touch; touch-action: pan-x; scrollbar-width: thin; }
+    .face-btn { flex: 0 0 auto; justify-content: center; min-height: 44px; padding: 8px 12px; font-size: 12px; }
     .kbd-tag { display: none; }
-    #hover-toast { max-width: 100%; overflow: hidden; text-overflow: ellipsis; }
   }
   @media (max-height: 500px) and (orientation: landscape) {
-    .brand-sub, .zen-row, #hover-toast { display: none; }
-    #bottom-dock { bottom: 4px; }
-    .face-bar { display: flex; flex-wrap: nowrap; }
-    .face-btn { min-height: 32px; }
-  }
-  #mobile-controls { display: none; }
-  @media (pointer: coarse) {
-    #mobile-controls { position: fixed; right: max(8px, env(safe-area-inset-right)); bottom: calc(155px + env(safe-area-inset-bottom)); z-index: 21; display: flex; flex-direction: column; gap: 6px; }
-    #mobile-controls button { min-width: 44px; min-height: 44px; padding: 6px 10px; border: 1px solid var(--border); border-radius: 10px; color: var(--ink); background: var(--panel); font: inherit; }
+    #hud-top .zen-row { display: none; }
+    #bottom-dock { bottom: max(4px, env(safe-area-inset-bottom)); gap: 3px; }
+    #mobile-controls button, .face-btn { min-height: 40px; }
+    .zoom-controls { padding: 0 3px; }
   }
   #loader {
     position: fixed; inset: 0; z-index: 100; background: #090c12;
@@ -347,14 +350,18 @@
   • 鍵盤 <b>1 ~ 6</b> 快速切換各面 · <b>0</b> 重置視角
 </div>
 
-<div id="mobile-controls" aria-label="手機操作">
-  <button id="sound-test" type="button">🔊 測試聲音</button>
-  <button id="zoom-in" type="button" aria-label="放大魔方">＋</button>
-  <button id="zoom-out" type="button" aria-label="縮小魔方">－</button>
-</div>
 <div id="bottom-dock">
   <div id="hover-toast" class="dim">將滑鼠移至魔方六面機關即可互動 · 拖曳空白處旋轉角度</div>
-  <div class="face-bar" id="faceBar">
+  <div id="mobile-controls" role="group" aria-label="手機操作">
+    <button id="sound-test" type="button">🔊 測試聲音</button>
+    <div class="zoom-controls" role="group" aria-label="縮放魔方">
+      <button id="zoom-out" type="button" aria-label="縮小魔方">−</button>
+      <span aria-hidden="true">縮放</span>
+      <button id="zoom-in" type="button" aria-label="放大魔方">＋</button>
+    </div>
+  </div>
+  <div class="face-scroll-hint">切換視角 · 左右滑動</div>
+  <div class="face-bar" id="faceBar" role="group" aria-label="切換魔方視角">
     <button class="face-btn active" data-face="iso"><span class="kbd-tag">0</span> 立體全景</button>
     <button class="face-btn" data-face="top"><span class="kbd-tag">1</span> 機械鍵軸</button>
     <button class="face-btn" data-face="front"><span class="kbd-tag">2</span> 矽膠泡泡樂</button>
