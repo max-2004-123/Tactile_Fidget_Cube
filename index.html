@@ -1,0 +1,2549 @@
+<!DOCTYPE html>
+<html lang="zh-TW">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0, user-scalable=no">
+<title>TACTILE-06 // 精密機械舒壓魔方 · Interactive 3D Fidget Cube</title>
+<script src="libs/three.min.js"></script>
+<script src="libs/Pass.js"></script>
+<script src="libs/CopyShader.js"></script>
+<script src="libs/ShaderPass.js"></script>
+<script src="libs/LuminosityHighPassShader.js"></script>
+<script src="libs/EffectComposer.js"></script>
+<script src="libs/RenderPass.js"></script>
+<script src="libs/UnrealBloomPass.js"></script>
+<script src="libs/OrbitControls.js"></script>
+<script src="libs/OBJExporter.js"></script>
+<script src="libs/GLTFExporter.js"></script>
+<style>
+  :root {
+    --bg: #0c0f16;
+    --panel: rgba(15, 19, 28, 0.78);
+    --border: rgba(255, 255, 255, 0.12);
+    --accent: #f0b95b;
+    --accent2: #4ce0d2;
+    --ink: #eef2f7;
+    --muted: #93a0b4;
+  }
+  * { box-sizing: border-box; margin: 0; padding: 0; user-select: none; -webkit-user-select: none; }
+  html, body {
+    width: 100%; height: 100%; overflow: hidden;
+    background: radial-gradient(circle at 50% 42%, #1b2232 0%, #0d111a 60%, #07090e 100%);
+    color: var(--ink);
+    font-family: "Segoe UI", "Microsoft JhengHei", system-ui, -apple-system, sans-serif;
+  }
+  canvas#c {
+    position: fixed; inset: 0; width: 100%; height: 100%; display: block;
+    touch-action: none;
+  }
+
+  /* Top-left HUD header */
+  #hud-top {
+    position: fixed; top: 16px; left: 16px; z-index: 20;
+    display: flex; flex-direction: column; gap: 8px; pointer-events: none;
+  }
+  .brand-card {
+    pointer-events: auto;
+    background: var(--panel); border: 1px solid var(--border);
+    backdrop-filter: blur(14px); -webkit-backdrop-filter: blur(14px);
+    border-radius: 14px; padding: 12px 16px;
+    box-shadow: 0 14px 36px rgba(0,0,0,0.42);
+    min-width: 268px;
+  }
+  .brand-title {
+    display: flex; align-items: center; justify-content: space-between; gap: 10px;
+    font-weight: 700; font-size: 15px; letter-spacing: 0.08em; color: var(--accent);
+  }
+  .brand-sub {
+    font-size: 11px; color: var(--muted); letter-spacing: 0.06em; margin-top: 3px;
+  }
+  .zen-row {
+    margin-top: 10px; padding-top: 9px; border-top: 1px solid rgba(255,255,255,0.08);
+    display: flex; align-items: center; justify-content: space-between; gap: 10px;
+    font-size: 12px;
+  }
+  .zen-count {
+    font-variant-numeric: tabular-nums; font-weight: 700; font-size: 16px; color: var(--accent2);
+  }
+  .combo-pill {
+    font-size: 11px; font-weight: 700; padding: 2px 8px; border-radius: 999px;
+    background: rgba(76, 224, 210, 0.14); color: var(--accent2);
+    border: 1px solid rgba(76, 224, 210, 0.35);
+    transition: transform 0.15s ease, opacity 0.25s ease;
+  }
+  .combo-pill.pop { transform: scale(1.14); }
+
+  /* Top-right Studio Drawer */
+  #studio-wrap {
+    position: fixed; top: 16px; right: 16px; z-index: 20;
+    display: flex; flex-direction: column; align-items: flex-end; gap: 8px;
+  }
+  #toggle-panel-btn {
+    background: var(--panel); border: 1px solid var(--border); color: var(--ink);
+    backdrop-filter: blur(12px); border-radius: 10px; padding: 8px 13px;
+    font-size: 12.5px; font-weight: 600; cursor: pointer;
+    box-shadow: 0 8px 24px rgba(0,0,0,0.35); transition: all 0.2s;
+  }
+  #toggle-panel-btn:hover { border-color: var(--accent); color: var(--accent); }
+  #studio-panel {
+    width: 306px; max-height: calc(100vh - 86px); overflow-y: auto;
+    background: var(--panel); border: 1px solid var(--border);
+    backdrop-filter: blur(16px); -webkit-backdrop-filter: blur(16px);
+    border-radius: 14px; padding: 14px 15px;
+    box-shadow: 0 18px 46px rgba(0,0,0,0.52);
+    transition: opacity 0.25s ease, transform 0.25s ease;
+  }
+  #studio-panel.collapsed {
+    opacity: 0; pointer-events: none; transform: translateY(-8px) scale(0.98);
+    display: none;
+  }
+  #studio-panel::-webkit-scrollbar { width: 5px; }
+  #studio-panel::-webkit-scrollbar-thumb { background: rgba(255,255,255,0.16); border-radius: 4px; }
+
+  .sec-title {
+    font-size: 11px; font-weight: 700; letter-spacing: 0.12em; text-transform: uppercase;
+    color: var(--muted); margin: 12px 0 7px;
+  }
+  .sec-title:first-child { margin-top: 2px; }
+
+  .theme-grid {
+    display: grid; grid-template-columns: 1fr 1fr; gap: 6px;
+  }
+  .btn-chip {
+    background: rgba(255,255,255,0.05); border: 1px solid rgba(255,255,255,0.10);
+    color: var(--ink); border-radius: 8px; padding: 7px 9px; font-size: 12px;
+    cursor: pointer; text-align: left; display: flex; align-items: center; gap: 7px;
+    transition: all 0.16s ease; font-family: inherit;
+  }
+  .btn-chip:hover { background: rgba(255,255,255,0.10); border-color: rgba(255,255,255,0.28); }
+  .btn-chip.active {
+    background: rgba(240, 185, 91, 0.16); border-color: var(--accent); color: #fff;
+  }
+  .swatch {
+    width: 13px; height: 13px; border-radius: 4px; flex-shrink: 0;
+    border: 1px solid rgba(255,255,255,0.35);
+  }
+
+  .seg-row { display: grid; grid-template-columns: repeat(3, 1fr); gap: 5px; }
+  .seg-btn {
+    background: rgba(255,255,255,0.05); border: 1px solid rgba(255,255,255,0.10);
+    color: var(--muted); border-radius: 8px; padding: 6px 4px; font-size: 11.5px;
+    cursor: pointer; text-align: center; transition: all 0.16s; font-family: inherit;
+  }
+  .seg-btn:hover { color: #fff; border-color: rgba(255,255,255,0.28); }
+  .seg-btn.active {
+    background: rgba(76, 224, 210, 0.16); border-color: var(--accent2); color: var(--accent2); font-weight: 600;
+  }
+
+  .slider-row {
+    display: flex; align-items: center; gap: 10px; font-size: 12px; margin: 4px 0;
+  }
+  .slider-row input[type=range] {
+    flex: 1; accent-color: var(--accent); cursor: pointer;
+  }
+  .slider-val {
+    min-width: 38px; text-align: right; font-variant-numeric: tabular-nums;
+    color: var(--accent); font-weight: 600;
+  }
+
+  .toggle-list { display: flex; flex-direction: column; gap: 6px; margin-top: 4px; }
+  .tg-item {
+    display: flex; align-items: center; justify-content: space-between;
+    font-size: 12px; color: var(--ink); cursor: pointer; padding: 3px 0;
+  }
+  .tg-item input { accent-color: var(--accent2); width: 15px; height: 15px; cursor: pointer; }
+
+  .action-grid { display: grid; grid-template-columns: 1fr 1fr; gap: 6px; margin-top: 6px; }
+  .action-btn {
+    background: rgba(255,255,255,0.06); border: 1px solid rgba(255,255,255,0.12);
+    color: var(--ink); border-radius: 8px; padding: 7px 8px; font-size: 11.8px;
+    cursor: pointer; text-align: center; transition: all 0.16s; font-family: inherit;
+  }
+  .action-btn:hover { border-color: var(--accent); color: var(--accent); background: rgba(240,185,91,0.10); }
+  .action-btn.primary {
+    background: rgba(76,224,210,0.14); border-color: rgba(76,224,210,0.35); color: var(--accent2);
+  }
+  .action-btn.primary:hover { background: rgba(76,224,210,0.24); }
+
+  /* Bottom Face Navigation Dock */
+  #bottom-dock {
+    position: fixed; bottom: 16px; left: 50%; transform: translateX(-50%);
+    z-index: 20; display: flex; flex-direction: column; align-items: center; gap: 8px;
+    max-width: calc(100vw - 24px);
+  }
+  #hover-toast {
+    background: rgba(10, 14, 22, 0.86); border: 1px solid rgba(240, 185, 91, 0.35);
+    backdrop-filter: blur(10px); border-radius: 999px;
+    padding: 5px 14px; font-size: 12px; color: #f6e7c8;
+    box-shadow: 0 6px 20px rgba(0,0,0,0.38);
+    transition: opacity 0.2s ease, transform 0.2s ease;
+    white-space: nowrap; pointer-events: none;
+  }
+  #hover-toast.dim { opacity: 0.72; border-color: rgba(255,255,255,0.12); color: var(--muted); }
+  .face-bar {
+    display: flex; align-items: center; gap: 4px; flex-wrap: nowrap; justify-content: center;
+    background: var(--panel); border: 1px solid var(--border);
+    backdrop-filter: blur(14px); -webkit-backdrop-filter: blur(14px);
+    padding: 5px; border-radius: 14px;
+    box-shadow: 0 12px 34px rgba(0,0,0,0.48);
+  }
+  .face-btn {
+    background: transparent; border: 1px solid transparent; color: var(--muted);
+    border-radius: 9px; padding: 5px 9px; font-size: 11.5px; font-weight: 500;
+    cursor: pointer; transition: all 0.16s ease; font-family: inherit;
+    display: flex; align-items: center; gap: 4px; white-space: nowrap;
+  }
+  @media (max-width: 860px) { .face-bar { flex-wrap: wrap; } }
+  .face-btn:hover { background: rgba(255,255,255,0.07); color: #fff; }
+  .face-btn.active {
+    background: rgba(240, 185, 91, 0.18); border-color: rgba(240, 185, 91, 0.55);
+    color: var(--accent); font-weight: 600;
+  }
+  .kbd-tag {
+    font-size: 10px; opacity: 0.65; border: 1px solid currentColor;
+    border-radius: 4px; padding: 0 4px; line-height: 1.4;
+  }
+
+  /* Quick Keyboard Bar hint */
+  #kbd-hint {
+    position: fixed; bottom: 16px; left: 16px; z-index: 15;
+    font-size: 11px; color: var(--muted); line-height: 1.6;
+    background: rgba(12, 15, 22, 0.55); border: 1px solid rgba(255,255,255,0.07);
+    border-radius: 10px; padding: 7px 11px; pointer-events: none;
+  }
+  @media (max-width: 920px) { #kbd-hint { display: none; } }
+
+  /* Floating burst feedback */
+  #fx-banner {
+    position: fixed; top: 82px; left: 50%; transform: translateX(-50%) translateY(-8px);
+    z-index: 25; pointer-events: none; opacity: 0;
+    background: linear-gradient(135deg, rgba(76,224,210,0.22), rgba(240,185,91,0.22));
+    border: 1px solid rgba(76,224,210,0.55); color: #fff;
+    padding: 6px 16px; border-radius: 999px; font-size: 13px; font-weight: 600;
+    letter-spacing: 0.05em; backdrop-filter: blur(8px);
+    transition: opacity 0.25s ease, transform 0.25s ease;
+  }
+  #fx-banner.show { opacity: 1; transform: translateX(-50%) translateY(0); }
+
+  #loader {
+    position: fixed; inset: 0; z-index: 100; background: #090c12;
+    display: flex; flex-direction: column; align-items: center; justify-content: center; gap: 12px;
+    color: var(--accent); letter-spacing: 0.2em; font-weight: 600;
+    transition: opacity 0.45s ease;
+  }
+  #loader small { color: var(--muted); letter-spacing: 0.08em; font-weight: 400; font-size: 12px; }
+</style>
+</head>
+<body>
+<div id="loader">
+  <div>TACTILE-06 // 精密機械舒壓魔方</div>
+  <small>正在裝配 6 面實體機關、物理引擎與 ASMR 聲學模組…</small>
+</div>
+
+<canvas id="c"></canvas>
+
+<div id="hud-top">
+  <div class="brand-card">
+    <div class="brand-title">
+      <span>TACTILE-06</span>
+      <span style="font-size:11px;color:var(--accent2);font-weight:600">CNC FIDGET CUBE</span>
+    </div>
+    <div class="brand-sub">六面互動式機械解壓魔方 · 即時物理與 ASMR 合成音效</div>
+    <div class="zen-row">
+      <span style="color:var(--muted)">已釋放壓力點數</span>
+      <div style="display:flex;align-items:center;gap:8px;">
+        <span class="combo-pill" id="comboPill">ZEN READY</span>
+        <span class="zen-count" id="zenCount">0</span>
+      </div>
+    </div>
+  </div>
+</div>
+
+<div id="fx-banner">✨ 泡泡全數按壓完成！連鎖自動彈回重置</div>
+
+<div id="studio-wrap">
+  <button id="toggle-panel-btn">⚙ 工藝控制台</button>
+  <div id="studio-panel">
+    <div class="sec-title">工藝材質配色 Theme</div>
+    <div class="theme-grid" id="themeGrid">
+      <button class="btn-chip active" data-theme="obsidian"><span class="swatch" style="background:linear-gradient(135deg,#232833,#d8a852)"></span>黑曜鈦金</button>
+      <button class="btn-chip" data-theme="macaron"><span class="swatch" style="background:linear-gradient(135deg,#f4efe6,#7adac9)"></span>療癒馬卡龍</button>
+      <button class="btn-chip" data-theme="cyber"><span class="swatch" style="background:linear-gradient(135deg,#182436,#00f0ff)"></span>賽博透殼</button>
+      <button class="btn-chip" data-theme="walnut"><span class="swatch" style="background:linear-gradient(135deg,#5a351f,#e8dcc6)"></span>溫潤胡桃木</button>
+    </div>
+
+    <div class="sec-title">機械鍵軸聲學 Switch Feel</div>
+    <div class="seg-row" id="switchTypeRow">
+      <button class="seg-btn active" data-sw="clicky">青軸 Clicky</button>
+      <button class="seg-btn" data-sw="creamy">紅軸 Creamy</button>
+      <button class="seg-btn" data-sw="tactile">茶軸 Tactile</button>
+    </div>
+
+    <div class="sec-title">工程爆炸拆解 Exploded View</div>
+    <div class="slider-row">
+      <input type="range" id="explodeSlider" min="0" max="100" value="0">
+      <span class="slider-val" id="explodeVal">0%</span>
+    </div>
+
+    <div class="sec-title">互動與音效設定 Audio & Physics</div>
+    <div class="slider-row">
+      <span style="min-width:54px;color:var(--muted)">音效音量</span>
+      <input type="range" id="volSlider" min="0" max="100" value="82">
+      <span class="slider-val" id="volVal">82%</span>
+    </div>
+    <div class="toggle-list">
+      <label class="tg-item"><span>ASMR 觸感合成音效</span><input type="checkbox" id="tgSound" checked></label>
+      <label class="tg-item"><span>泡泡樂五聲音階音高</span><input type="checkbox" id="tgPentatonic" checked></label>
+      <label class="tg-item"><span>磁浮展示底座</span><input type="checkbox" id="tgPedestal" checked></label>
+      <label class="tg-item"><span>零重力懸浮漂移</span><input type="checkbox" id="tgFloat" checked></label>
+      <label class="tg-item"><span>自動緩慢展示旋轉</span><input type="checkbox" id="tgAutoSpin"></label>
+    </div>
+
+    <div class="sec-title">趣味動作 & 3D 模型匯出</div>
+    <div class="action-grid">
+      <button class="action-btn primary" id="btnThrowCube">🌀 甩動魔方</button>
+      <button class="action-btn" id="btnResetPop">🫧 重置泡泡樂</button>
+      <button class="action-btn" id="btnExportSTL">📐 匯出 .STL</button>
+      <button class="action-btn" id="btnExportOBJ">📦 匯出 .OBJ</button>
+      <button class="action-btn" id="btnExportGLB">✨ 匯出 .GLB</button>
+      <button class="action-btn" id="btnShot">📷 擷取截圖</button>
+    </div>
+  </div>
+</div>
+
+<div id="kbd-hint">
+  <b>操作提示</b><br>
+  • 直接點擊/拖曳各面機關即可把玩<br>
+  • 拖曳空白處旋轉視角 · 滾輪縮放<br>
+  • 鍵盤 <b>Q W E R</b> 可直接敲擊頂部機械鍵軸<br>
+  • 鍵盤 <b>1 ~ 6</b> 快速切換各面 · <b>0</b> 重置視角
+</div>
+
+<div id="bottom-dock">
+  <div id="hover-toast" class="dim">將滑鼠移至魔方六面機關即可互動 · 拖曳空白處旋轉角度</div>
+  <div class="face-bar" id="faceBar">
+    <button class="face-btn active" data-face="iso"><span class="kbd-tag">0</span> 立體全景</button>
+    <button class="face-btn" data-face="top"><span class="kbd-tag">1</span> 機械鍵軸</button>
+    <button class="face-btn" data-face="front"><span class="kbd-tag">2</span> 矽膠泡泡樂</button>
+    <button class="face-btn" data-face="right"><span class="kbd-tag">3</span> 棘輪齒輪</button>
+    <button class="face-btn" data-face="left"><span class="kbd-tag">4</span> 磁吸推牌/開關</button>
+    <button class="face-btn" data-face="back"><span class="kbd-tag">5</span> 鋼珠軌道/軌跡球</button>
+    <button class="face-btn" data-face="bottom"><span class="kbd-tag">6</span> 搖桿/捏捏樂</button>
+  </div>
+</div>
+
+<script>
+'use strict';
+
+window.addEventListener('error', (e) => {
+  const errBox = document.createElement('div');
+  errBox.style.cssText = 'position:fixed;bottom:8px;left:8px;z-index:999;background:#2a0b0e;color:#ff9ba3;border:1px solid #ff5a6b;padding:8px 12px;border-radius:8px;font-size:12px;font-family:monospace;';
+  errBox.textContent = 'Runtime Error: ' + e.message + ' @ line ' + e.lineno;
+  document.body.appendChild(errBox);
+});
+
+const TAU = Math.PI * 2;
+const DEG = Math.PI / 180;
+const clamp = (v, a, b) => v < a ? a : v > b ? b : v;
+const lerp = (a, b, t) => a + (b - a) * t;
+const lin = (hex) => new THREE.Color(hex).convertSRGBToLinear();
+
+/* ============================================================================
+   1. PROCEDURAL ASMR AUDIO ENGINE (Web Audio API, Zero External Assets)
+   ============================================================================ */
+class SoundEngine {
+  constructor() {
+    this.ctx = null;
+    this.master = null;
+    this.comp = null;
+    this.noiseBuf = null;
+    this.enabled = true;
+    this.volume = 0.82;
+    this.pentatonic = true;
+    this.switchType = 'clicky';
+    this.lastTickAt = 0;
+    this.lastClinkAt = 0;
+  }
+
+  init() {
+    if (this.ctx) {
+      if (this.ctx.state === 'suspended') this.ctx.resume();
+      return;
+    }
+    const AC = window.AudioContext || window.webkitAudioContext;
+    if (!AC) return;
+    this.ctx = new AC();
+    this.comp = this.ctx.createDynamicsCompressor();
+    this.comp.threshold.value = -14;
+    this.comp.knee.value = 18;
+    this.comp.ratio.value = 6;
+    this.comp.attack.value = 0.002;
+    this.comp.release.value = 0.12;
+
+    this.master = this.ctx.createGain();
+    this.master.gain.value = this.enabled ? this.volume : 0;
+    this.comp.connect(this.master);
+    this.master.connect(this.ctx.destination);
+
+    // Pre-bake 1s noise buffer with subtle pink-ish warmth
+    const sr = this.ctx.sampleRate;
+    this.noiseBuf = this.ctx.createBuffer(1, sr, sr);
+    const d = this.noiseBuf.getChannelData(0);
+    let b0 = 0, b1 = 0, b2 = 0;
+    for (let i = 0; i < sr; i++) {
+      const w = Math.random() * 2 - 1;
+      b0 = 0.99 * b0 + w * 0.06;
+      b1 = 0.96 * b1 + w * 0.14;
+      b2 = 0.82 * b2 + w * 0.35;
+      d[i] = clamp(b0 + b1 + b2 + w * 0.45, -1, 1);
+    }
+  }
+
+  setVolume(v) {
+    this.volume = v;
+    if (this.master && this.ctx) {
+      this.master.gain.setTargetAtTime(this.enabled ? v : 0, this.ctx.currentTime, 0.02);
+    }
+  }
+
+  setEnabled(on) {
+    this.enabled = on;
+    if (this.master && this.ctx) {
+      this.master.gain.setTargetAtTime(on ? this.volume : 0, this.ctx.currentTime, 0.02);
+    }
+  }
+
+  noiseBurst(t, dur, freq, q, gainAmt) {
+    const src = this.ctx.createBufferSource();
+    src.buffer = this.noiseBuf;
+    src.playbackRate.value = 0.85 + Math.random() * 0.3;
+    const flt = this.ctx.createBiquadFilter();
+    flt.type = 'bandpass';
+    flt.frequency.setValueAtTime(freq, t);
+    flt.Q.setValueAtTime(q, t);
+    const g = this.ctx.createGain();
+    g.gain.setValueAtTime(gainAmt, t);
+    g.gain.exponentialRampToValueAtTime(0.0005, t + dur);
+    src.connect(flt); flt.connect(g); g.connect(this.comp);
+    src.start(t, Math.random() * 0.5, dur + 0.02);
+  }
+
+  tone(t, type, f0, f1, dur, gainAmt) {
+    const osc = this.ctx.createOscillator();
+    const g = this.ctx.createGain();
+    osc.type = type;
+    osc.frequency.setValueAtTime(f0, t);
+    if (f1 !== f0) osc.frequency.exponentialRampToValueAtTime(Math.max(25, f1), t + dur);
+    g.gain.setValueAtTime(gainAmt, t);
+    g.gain.exponentialRampToValueAtTime(0.0005, t + dur);
+    osc.connect(g); g.connect(this.comp);
+    osc.start(t);
+    osc.stop(t + dur + 0.01);
+  }
+
+  playKey(isDown, keyIdx) {
+    if (!this.enabled) return;
+    this.init(); if (!this.ctx) return;
+    const t = this.ctx.currentTime;
+    const pOffset = (keyIdx - 1.5) * 14;
+    if (this.switchType === 'clicky') {
+      if (isDown) {
+        this.noiseBurst(t, 0.014, 3400 + pOffset * 8, 2.2, 0.55);
+        this.tone(t, 'triangle', 2650 + pOffset * 6, 1300, 0.015, 0.24);
+        this.tone(t + 0.008, 'sine', 210 + pOffset, 82, 0.042, 0.36);
+        this.noiseBurst(t + 0.006, 0.022, 950, 1.4, 0.25);
+      } else {
+        this.noiseBurst(t, 0.012, 2400 + pOffset * 5, 2.5, 0.25);
+        this.tone(t, 'triangle', 1750, 920, 0.012, 0.12);
+      }
+    } else if (this.switchType === 'creamy') {
+      if (isDown) {
+        this.tone(t, 'sine', 235 + pOffset * 0.8, 88, 0.055, 0.52);
+        this.tone(t, 'triangle', 460 + pOffset, 135, 0.035, 0.22);
+        this.noiseBurst(t, 0.026, 620, 1.6, 0.32);
+      } else {
+        this.tone(t, 'sine', 330 + pOffset, 165, 0.028, 0.20);
+        this.noiseBurst(t, 0.016, 1150, 1.8, 0.14);
+      }
+    } else { // tactile
+      if (isDown) {
+        this.noiseBurst(t, 0.010, 1850, 2.8, 0.30);
+        this.tone(t, 'triangle', 760 + pOffset * 2, 260, 0.018, 0.20);
+        this.tone(t + 0.010, 'sine', 270 + pOffset, 105, 0.040, 0.38);
+      } else {
+        this.tone(t, 'sine', 390, 180, 0.022, 0.16);
+        this.noiseBurst(t, 0.014, 1400, 2.0, 0.15);
+      }
+    }
+  }
+
+  playPop(poppedIn, idx) {
+    if (!this.enabled) return;
+    this.init(); if (!this.ctx) return;
+    const t = this.ctx.currentTime;
+    const scale = [261.63, 293.66, 329.63, 392.00, 440.00, 523.25, 587.33, 659.25, 783.99];
+    const base = this.pentatonic ? scale[idx % scale.length] : (230 + idx * 18);
+    if (poppedIn) {
+      this.tone(t, 'sine', base * 0.72, base * 1.85, 0.045, 0.44);
+      this.noiseBurst(t, 0.018, base * 3.1, 3.8, 0.22);
+    } else {
+      this.tone(t, 'sine', base * 1.45, base * 0.65, 0.048, 0.38);
+      this.noiseBurst(t, 0.020, base * 2.1, 3.2, 0.18);
+    }
+  }
+
+  playCascadeChime() {
+    if (!this.enabled) return;
+    this.init(); if (!this.ctx) return;
+    const t = this.ctx.currentTime;
+    [523.25, 659.25, 783.99, 1046.5].forEach((f, i) => {
+      this.tone(t + i * 0.045, 'sine', f, f * 1.005, 0.28, 0.14);
+    });
+  }
+
+  playRatchetTick(speed) {
+    if (!this.enabled) return;
+    this.init(); if (!this.ctx) return;
+    const now = performance.now();
+    if (now - this.lastTickAt < 18) return;
+    this.lastTickAt = now;
+    const t = this.ctx.currentTime;
+    const g = clamp(0.18 + Math.abs(speed) * 0.022, 0.18, 0.42);
+    const pitchMod = 1 + clamp(Math.abs(speed) * 0.02, 0, 0.25);
+    this.noiseBurst(t, 0.008, 4200 * pitchMod, 3.0, g * 0.9);
+    this.tone(t, 'triangle', 1950 * pitchMod, 780, 0.014, g * 0.55);
+  }
+
+  playMagnetClack(strong = true) {
+    if (!this.enabled) return;
+    this.init(); if (!this.ctx) return;
+    const t = this.ctx.currentTime;
+    const g = strong ? 0.42 : 0.25;
+    this.noiseBurst(t, 0.012, 2300, 2.4, g);
+    this.tone(t, 'triangle', 1250, 320, 0.018, g * 0.65);
+    this.noiseBurst(t + 0.012, 0.014, 1450, 2.0, g * 0.75);
+    this.tone(t + 0.012, 'sine', 260, 95, 0.036, g * 0.7);
+  }
+
+  playToggle(on) {
+    if (!this.enabled) return;
+    this.init(); if (!this.ctx) return;
+    const t = this.ctx.currentTime;
+    this.noiseBurst(t, 0.014, 2800, 2.2, 0.42);
+    this.tone(t, 'square', on ? 680 : 520, on ? 210 : 155, 0.025, 0.14);
+    this.tone(t + 0.006, 'sine', on ? 360 : 280, 95, 0.045, 0.42);
+  }
+
+  playBallClink(vel) {
+    if (!this.enabled) return;
+    this.init(); if (!this.ctx) return;
+    const now = performance.now();
+    if (now - this.lastClinkAt < 16) return;
+    this.lastClinkAt = now;
+    const t = this.ctx.currentTime;
+    const g = clamp(vel * 0.06, 0.05, 0.35);
+    this.tone(t, 'sine', 3180 + Math.random() * 140, 3140, 0.042, g);
+    this.tone(t, 'sine', 5420 + Math.random() * 180, 5360, 0.028, g * 0.55);
+  }
+
+  playStickThud() {
+    if (!this.enabled) return;
+    this.init(); if (!this.ctx) return;
+    const t = this.ctx.currentTime;
+    this.tone(t, 'sine', 155, 64, 0.036, 0.25);
+    this.noiseBurst(t, 0.015, 420, 1.5, 0.16);
+  }
+
+  playSquishBloop(releasing) {
+    if (!this.enabled) return;
+    this.init(); if (!this.ctx) return;
+    const t = this.ctx.currentTime;
+    if (releasing) {
+      this.tone(t, 'sine', 175, 360, 0.055, 0.28);
+      this.tone(t + 0.045, 'sine', 340, 210, 0.065, 0.18);
+    } else {
+      this.tone(t, 'sine', 280, 125, 0.055, 0.24);
+    }
+  }
+}
+const SFX = new SoundEngine();
+
+/* ============================================================================
+   2. PROCEDURAL CANVAS TEXTURES (Studio Env, Woodgrain, Keycap Legends, Trackball)
+   ============================================================================ */
+function makeNoiseFn(seed) {
+  const h = (x, y) => {
+    let n = Math.imul(x, 374761393) ^ Math.imul(y, 668265263) ^ Math.imul(seed, 1442695041);
+    n = Math.imul(n ^ (n >>> 13), 1274126177); n ^= n >>> 16;
+    return (n >>> 0) / 4294967296;
+  };
+  const sm = t => t * t * (3 - 2 * t);
+  return (x, y) => {
+    const xi = Math.floor(x), yi = Math.floor(y);
+    const u = sm(x - xi), v = sm(y - yi);
+    return lerp(lerp(h(xi, yi), h(xi + 1, yi), u), lerp(h(xi, yi + 1), h(xi + 1, yi + 1), u), v);
+  };
+}
+
+function makeBrushedMetalTexture() {
+  const cv = document.createElement('canvas'); cv.width = 512; cv.height = 512;
+  const g = cv.getContext('2d');
+  g.fillStyle = '#c8c8c8'; g.fillRect(0, 0, 512, 512);
+  for (let y = 0; y < 512; y++) {
+    const v = 185 + Math.floor((Math.random() - 0.5) * 48);
+    g.fillStyle = `rgb(${v},${v},${v})`;
+    g.fillRect(0, y, 512, 1);
+  }
+  const tex = new THREE.CanvasTexture(cv);
+  tex.wrapS = tex.wrapT = THREE.RepeatWrapping;
+  tex.repeat.set(2, 2);
+  return tex;
+}
+
+function makeWalnutTexture() {
+  const cv = document.createElement('canvas'); cv.width = 512; cv.height = 512;
+  const g = cv.getContext('2d');
+  const img = g.createImageData(512, 512);
+  const d = img.data;
+  const n1 = makeNoiseFn(42);
+  for (let y = 0; y < 512; y++) {
+    for (let x = 0; x < 512; x++) {
+      const warp = n1(x * 0.012, y * 0.005) * 14 + n1(x * 0.04, y * 0.015) * 4;
+      const grain = Math.sin(x * 0.085 + warp) * 0.5 + 0.5;
+      const pores = n1(x * 0.35, y * 0.04);
+      const t = clamp(grain * 0.72 + pores * 0.28, 0, 1);
+      const o = (y * 512 + x) * 4;
+      d[o]     = Math.round(lerp(56, 118, t));
+      d[o + 1] = Math.round(lerp(31, 68, t));
+      d[o + 2] = Math.round(lerp(18, 38, t));
+      d[o + 3] = 255;
+    }
+  }
+  g.putImageData(img, 0, 0);
+  const tex = new THREE.CanvasTexture(cv);
+  tex.encoding = THREE.sRGBEncoding;
+  tex.wrapS = tex.wrapT = THREE.RepeatWrapping;
+  tex.anisotropy = 8;
+  return tex;
+}
+
+function makeKeyLegendTexture(label, subLabel, bgHex, fgHex) {
+  const cv = document.createElement('canvas'); cv.width = 256; cv.height = 256;
+  const g = cv.getContext('2d');
+  g.fillStyle = bgHex;
+  g.fillRect(0, 0, 256, 256);
+  // Subtle PBT texture speckles
+  for (let i = 0; i < 1600; i++) {
+    const a = 0.03 + Math.random() * 0.04;
+    g.fillStyle = Math.random() < 0.5 ? `rgba(255,255,255,${a})` : `rgba(0,0,0,${a})`;
+    g.fillRect(Math.random() * 256, Math.random() * 256, 2, 2);
+  }
+  g.fillStyle = fgHex;
+  g.textAlign = 'center';
+  g.textBaseline = 'middle';
+  g.font = '800 46px "Segoe UI", system-ui, sans-serif';
+  g.fillText(label, 128, 118);
+  g.globalAlpha = 0.65;
+  g.font = '700 22px "Segoe UI", monospace';
+  g.fillText(subLabel, 128, 174);
+  const tex = new THREE.CanvasTexture(cv);
+  tex.encoding = THREE.sRGBEncoding;
+  tex.anisotropy = 8;
+  return tex;
+}
+
+function makeDialPlateTexture() {
+  const S = 1024, cx = S / 2;
+  const cv = document.createElement('canvas'); cv.width = S; cv.height = S;
+  const g = cv.getContext('2d');
+  g.fillStyle = '#181c24';
+  g.fillRect(0, 0, S, S);
+  g.strokeStyle = 'rgba(235, 195, 115, 0.55)';
+  g.fillStyle = 'rgba(235, 195, 115, 0.75)';
+  for (let i = 0; i < 24; i++) {
+    const a = i * TAU / 24;
+    const r0 = 330, r1 = i % 6 === 0 ? 415 : 385;
+    g.lineWidth = i % 6 === 0 ? 6 : 3;
+    g.beginPath();
+    g.moveTo(cx + Math.cos(a) * r0, cx + Math.sin(a) * r0);
+    g.lineTo(cx + Math.cos(a) * r1, cx + Math.sin(a) * r1);
+    g.stroke();
+  }
+  g.lineWidth = 3;
+  g.beginPath(); g.arc(cx, cx, 326, 0, TAU); g.stroke();
+  const tex = new THREE.CanvasTexture(cv);
+  tex.encoding = THREE.sRGBEncoding;
+  tex.anisotropy = 8;
+  return tex;
+}
+
+function makeTrackballTexture() {
+  const W = 512, H = 256;
+  const cv = document.createElement('canvas'); cv.width = W; cv.height = H;
+  const g = cv.getContext('2d');
+  const grad = g.createLinearGradient(0, 0, 0, H);
+  grad.addColorStop(0, '#eef2f6');
+  grad.addColorStop(0.5, '#b6c0ce');
+  grad.addColorStop(1, '#7a8699');
+  g.fillStyle = grad; g.fillRect(0, 0, W, H);
+  // Crisp latitude/longitude & precision dots so 3D spin is clearly readable
+  g.strokeStyle = 'rgba(28, 36, 52, 0.45)';
+  g.lineWidth = 3;
+  for (let i = 1; i < 6; i++) {
+    const y = (i / 6) * H;
+    g.beginPath(); g.moveTo(0, y); g.lineTo(W, y); g.stroke();
+  }
+  for (let i = 0; i < 12; i++) {
+    const x = (i / 12) * W;
+    g.beginPath(); g.moveTo(x, 0); g.lineTo(x, H); g.stroke();
+  }
+  g.fillStyle = '#d98c36';
+  for (let j = 1; j < 6; j++) {
+    for (let i = 0; i < 12; i++) {
+      g.beginPath();
+      g.arc((i + 0.5) / 12 * W, (j / 6) * H, 4.5, 0, TAU);
+      g.fill();
+    }
+  }
+  const tex = new THREE.CanvasTexture(cv);
+  tex.encoding = THREE.sRGBEncoding;
+  tex.anisotropy = 8;
+  return tex;
+}
+
+function makeStudioEnvironment(renderer) {
+  const W = 1024, H = 512;
+  const cv = document.createElement('canvas'); cv.width = W; cv.height = H;
+  const g = cv.getContext('2d');
+  const gr = g.createLinearGradient(0, 0, 0, H);
+  gr.addColorStop(0, '#5a6375');
+  gr.addColorStop(0.42, '#2d3544');
+  gr.addColorStop(0.52, '#181c26');
+  gr.addColorStop(0.75, '#0c0f15');
+  gr.addColorStop(1, '#06070b');
+  g.fillStyle = gr; g.fillRect(0, 0, W, H);
+
+  const softbox = (x, y, w, h, col, blur) => {
+    g.save(); g.filter = `blur(${blur}px)`; g.fillStyle = col; g.fillRect(x, y, w, h); g.restore();
+  };
+  softbox(340, 32, 300, 115, '#cfd6e2', 12);  // overhead satin softbox
+  softbox(80, 145, 70, 170, '#a8d8ff', 6);    // cool cyan-blue fill strip
+  softbox(790, 160, 140, 110, '#ffd49c', 8);  // warm brass kicker
+  softbox(550, 175, 36, 135, '#e8eef8', 5);   // subtle specular rim strip
+  softbox(0, 105, W, 12, '#b8c3d4', 5);       // overhead ring reflection
+
+  const tex = new THREE.CanvasTexture(cv);
+  tex.mapping = THREE.EquirectangularReflectionMapping;
+  tex.encoding = THREE.sRGBEncoding;
+  const pm = new THREE.PMREMGenerator(renderer);
+  const env = pm.fromEquirectangular(tex).texture;
+  pm.dispose(); tex.dispose();
+  return env;
+}
+
+/* ============================================================================
+   3. PROCEDURAL GEOMETRY HELPERS
+   ============================================================================ */
+function roundedRectShape(hw, hh, r) {
+  const s = new THREE.Shape();
+  s.moveTo(-hw + r, -hh);
+  s.lineTo(hw - r, -hh);
+  s.quadraticCurveTo(hw, -hh, hw, -hh + r);
+  s.lineTo(hw, hh - r);
+  s.quadraticCurveTo(hw, hh, hw - r, hh);
+  s.lineTo(-hw + r, hh);
+  s.quadraticCurveTo(-hw, hh, -hw, hh - r);
+  s.lineTo(-hw, -hh + r);
+  s.quadraticCurveTo(-hw, -hh, -hw + r, -hh);
+  return s;
+}
+
+function roundedRectPath(hw, hh, r) {
+  const p = new THREE.Path();
+  p.moveTo(hw - r, -hh);
+  p.lineTo(-hw + r, -hh);
+  p.absarc(-hw + r, -hh + r, r, -Math.PI / 2, -Math.PI, true);
+  p.lineTo(-hw, hh - r);
+  p.absarc(-hw + r, hh - r, r, Math.PI, Math.PI / 2, true);
+  p.lineTo(hw - r, hh);
+  p.absarc(hw - r, hh - r, r, Math.PI / 2, 0, true);
+  p.lineTo(hw, -hh + r);
+  p.absarc(hw - r, -hh + r, r, 0, -Math.PI / 2, true);
+  return p;
+}
+
+function createPopPlateGeo() {
+  const outer = roundedRectShape(1.44, 1.44, 0.14);
+  for (let row = 0; row < 3; row++) {
+    for (let col = 0; col < 3; col++) {
+      const h = new THREE.Path();
+      h.absarc((col - 1) * 0.88, (1 - row) * 0.88, 0.34, 0, TAU, true);
+      outer.holes.push(h);
+    }
+  }
+  const geo = new THREE.ExtrudeGeometry(outer, {
+    depth: 0.06, bevelEnabled: true, bevelThickness: 0.012, bevelSize: 0.012, bevelSegments: 1, curveSegments: 24
+  });
+  geo.translate(0, 0, 1.77);
+  return geo;
+}
+
+function createFaceBezelGeo() {
+  // Outer flat 1.68 + bevel 0.03 = 1.71; Hole flat 1.44 -> bevel inward to 1.41
+  const outer = roundedRectShape(1.68, 1.68, 0.30);
+  outer.holes.push(roundedRectPath(1.44, 1.44, 0.16));
+  const geo = new THREE.ExtrudeGeometry(outer, {
+    depth: 0.21,
+    bevelEnabled: true,
+    bevelThickness: 0.03,
+    bevelSize: 0.03,
+    bevelSegments: 2,
+    curveSegments: 16
+  });
+  // Extrude runs from -0.03 to +0.24 -> shift +1.75 so it spans z = 1.72 .. 1.99
+  geo.translate(0, 0, 1.75);
+  return geo;
+}
+
+function createM3ScrewMesh(matDark, matSteel) {
+  const g = new THREE.Group();
+  const head = new THREE.Mesh(new THREE.CylinderGeometry(0.056, 0.056, 0.024, 16), matSteel);
+  head.rotation.x = Math.PI / 2;
+  const hexSocket = new THREE.Mesh(new THREE.CylinderGeometry(0.028, 0.028, 0.028, 6), matDark);
+  hexSocket.rotation.x = Math.PI / 2;
+  hexSocket.position.z = 0.002;
+  g.add(head, hexSocket);
+  return g;
+}
+
+function createInvoluteGearGeo(N, m, thick, bore, spokes = 5) {
+  const pa = 20 * DEG;
+  const rp = m * N / 2;
+  const rb = rp * Math.cos(pa);
+  const ra = rp + m;
+  const rf = Math.max(rp - 1.25 * m, bore + 0.025);
+  const beta = Math.PI / (2 * N) + (Math.tan(pa) - pa);
+  const ta = Math.sqrt(Math.max((ra / rb) ** 2 - 1, 0));
+  const t0 = rf > rb ? Math.sqrt((rf / rb) ** 2 - 1) : 0;
+  const phi0 = t0 - Math.atan(t0);
+  const FL = 6;
+  const P = (r, a) => new THREE.Vector2(r * Math.cos(a), r * Math.sin(a));
+  const pts = [];
+  for (let k = 0; k < N; k++) {
+    const c = k * TAU / N;
+    if (rf < rb) pts.push(P(rf, c - beta));
+    for (let i = 0; i <= FL; i++) {
+      const t = t0 + (ta - t0) * i / FL;
+      pts.push(P(rb * Math.sqrt(1 + t * t), c - (beta - (t - Math.atan(t)))));
+    }
+    pts.push(P(ra, c));
+    for (let i = FL; i >= 0; i--) {
+      const t = t0 + (ta - t0) * i / FL;
+      pts.push(P(rb * Math.sqrt(1 + t * t), c + (beta - (t - Math.atan(t)))));
+    }
+    if (rf < rb) pts.push(P(rf, c + beta));
+    const a0 = c + (beta - phi0), a1 = (k + 1) * TAU / N - (beta - phi0);
+    for (let i = 1; i < 3; i++) pts.push(P(rf, a0 + (a1 - a0) * i / 3));
+  }
+  const shape = new THREE.Shape(pts);
+  const bp = new THREE.Path(); bp.absarc(0, 0, bore, 0, TAU, true); shape.holes.push(bp);
+
+  const rim = rf - 0.075, hub = bore + 0.065;
+  if (rim - hub > 0.11 && spokes > 0) {
+    const w = 0.032;
+    for (let i = 0; i < spokes; i++) {
+      const a0 = i * TAU / spokes, a1 = (i + 1) * TAU / spokes;
+      const dO = Math.asin(Math.min(w / rim, 0.85));
+      const dI = Math.asin(Math.min(w / hub, 0.85));
+      if (a1 - a0 - 2 * dI < 0.25) continue;
+      const h = new THREE.Path();
+      h.moveTo(rim * Math.cos(a0 + dO), rim * Math.sin(a0 + dO));
+      h.absarc(0, 0, rim, a0 + dO, a1 - dO, false);
+      h.lineTo(hub * Math.cos(a1 - dI), hub * Math.sin(a1 - dI));
+      h.absarc(0, 0, hub, a1 - dI, a0 + dI, true);
+      h.closePath();
+      shape.holes.push(h);
+    }
+  }
+  const geo = new THREE.ExtrudeGeometry(shape, {
+    depth: thick, bevelEnabled: true, bevelThickness: 0.006, bevelSize: 0.004, bevelSegments: 1, curveSegments: 16
+  });
+  geo.translate(0, 0, -thick / 2);
+  return { geo, rp, rf, ra };
+}
+
+function createRatchetWheelGeo(N, rOuter, rInner, thick, bore) {
+  const pts = [];
+  for (let k = 0; k < N; k++) {
+    const a0 = k * TAU / N;
+    const a1 = (k + 0.86) * TAU / N;
+    pts.push(new THREE.Vector2(rInner * Math.cos(a0), rInner * Math.sin(a0)));
+    pts.push(new THREE.Vector2(rOuter * Math.cos(a0 + 0.02), rOuter * Math.sin(a0 + 0.02)));
+    pts.push(new THREE.Vector2(rInner * Math.cos(a1), rInner * Math.sin(a1)));
+  }
+  const shape = new THREE.Shape(pts);
+  const bp = new THREE.Path(); bp.absarc(0, 0, bore, 0, TAU, true); shape.holes.push(bp);
+  const geo = new THREE.ExtrudeGeometry(shape, {
+    depth: thick, bevelEnabled: true, bevelThickness: 0.004, bevelSize: 0.003, bevelSegments: 1
+  });
+  geo.translate(0, 0, -thick / 2);
+  return geo;
+}
+
+function createKnurledDialGeo(radius, thick, flutes = 20) {
+  const pts = [];
+  const segs = flutes * 6;
+  for (let i = 0; i < segs; i++) {
+    const a = i * TAU / segs;
+    const groove = Math.max(0, Math.cos(flutes * a)) * 0.028;
+    const r = radius - groove;
+    pts.push(new THREE.Vector2(r * Math.cos(a), r * Math.sin(a)));
+  }
+  const shape = new THREE.Shape(pts);
+  const geo = new THREE.ExtrudeGeometry(shape, {
+    depth: thick, bevelEnabled: true, bevelThickness: 0.015, bevelSize: 0.014, bevelSegments: 2
+  });
+  geo.translate(0, 0, -thick / 2);
+  return geo;
+}
+
+function createSculptedKeycapGeo(baseW = 1.06, topW = 0.80, height = 0.36) {
+  // Custom subdivided box with tapered silhouette + concave finger dish on top face
+  const geo = new THREE.BoxGeometry(1, 1, 1, 14, 14, 6);
+  const pos = geo.attributes.position;
+  for (let i = 0; i < pos.count; i++) {
+    let x = pos.getX(i), y = pos.getY(i), z = pos.getZ(i);
+    const t = z + 0.5; // 0 at bottom, 1 at top
+    const taper = lerp(baseW, topW, Math.pow(t, 0.85));
+    // Softly round corners
+    const nx = x * 2, ny = y * 2;
+    const cornerPull = 1 - 0.08 * Math.pow(nx * nx * ny * ny, 1.5);
+    const px = x * taper * cornerPull;
+    const py = y * taper * cornerPull;
+    let pz = t * height;
+    if (t > 0.85) {
+      // Sculpted cylindrical + slight spherical concave dish
+      const dish = (1 - Math.min(1, (x * 2) ** 2 * 0.85 + (y * 2) ** 2 * 0.25)) * 0.048;
+      pz -= dish * ((t - 0.85) / 0.15);
+    }
+    pos.setXYZ(i, px, py, pz);
+  }
+  geo.computeVertexNormals();
+  // Group 4 (+Z top face) gets legend texture (mat 1), sides get solid PBT (mat 0)
+  for (const g of geo.groups) {
+    g.materialIndex = (g.materialIndex === 4) ? 1 : 0;
+  }
+  return geo;
+}
+
+function createPopDomeGeometry(radius = 0.34) {
+  const segR = 14, segA = 28;
+  const positions = [];
+  const uvs = [];
+  const indices = [];
+  for (let ir = 0; ir <= segR; ir++) {
+    const u = ir / segR;
+    const r = u * radius;
+    for (let ia = 0; ia <= segA; ia++) {
+      const a = (ia / segA) * TAU;
+      positions.push(r * Math.cos(a), r * Math.sin(a), 0);
+      uvs.push(0.5 + 0.5 * u * Math.cos(a), 0.5 + 0.5 * u * Math.sin(a));
+    }
+  }
+  const stride = segA + 1;
+  for (let ir = 0; ir < segR; ir++) {
+    for (let ia = 0; ia < segA; ia++) {
+      const a = ir * stride + ia;
+      const b = a + stride;
+      const c = b + 1;
+      const d = a + 1;
+      indices.push(a, b, d, b, c, d);
+    }
+  }
+  const geo = new THREE.BufferGeometry();
+  geo.setAttribute('position', new THREE.Float32BufferAttribute(positions, 3));
+  geo.setAttribute('uv', new THREE.Float32BufferAttribute(uvs, 2));
+  geo.setIndex(indices);
+  updatePopDomeVertices(geo, radius, 1.0);
+  return geo;
+}
+
+function updatePopDomeVertices(geo, radius, popVal) {
+  const pos = geo.attributes.position;
+  const segR = 14, segA = 28, stride = segA + 1;
+  for (let ir = 0; ir <= segR; ir++) {
+    const u = ir / segR;
+    const baseDome = Math.pow(Math.max(0, 1 - u * u), 0.72);
+    // Slight crease ring when inverted
+    const crease = Math.sin(u * Math.PI) * 0.025 * (1 - Math.abs(popVal));
+    const z = popVal * 0.225 * baseDome + crease;
+    // Slight radial inward pull at peak displacement
+    const rScale = 1 - 0.03 * (1 - u) * Math.abs(popVal);
+    const r = u * radius * rScale;
+    for (let ia = 0; ia <= segA; ia++) {
+      const idx = ir * stride + ia;
+      const a = (ia / segA) * TAU;
+      pos.setXYZ(idx, r * Math.cos(a), r * Math.sin(a), z);
+    }
+  }
+  pos.needsUpdate = true;
+  geo.computeVertexNormals();
+}
+
+function createSquishDomeGeometry(radius = 0.52) {
+  // High-res upper hemisphere resting on local z = 0
+  const geo = new THREE.SphereGeometry(radius, 36, 22, 0, TAU, 0, Math.PI * 0.54);
+  geo.rotateX(Math.PI / 2); // now pole is along +Z
+  geo.userData.basePos = new Float32Array(geo.attributes.position.array);
+  return geo;
+}
+
+function updateSquishDomeVertices(geo, squishAmt, leanX, leanY) {
+  const pos = geo.attributes.position;
+  const base = geo.userData.basePos;
+  const s = clamp(squishAmt, -0.35, 0.58);
+  for (let i = 0; i < pos.count; i++) {
+    const bx = base[i * 3], by = base[i * 3 + 1], bz = Math.max(0, base[i * 3 + 2]);
+    const hNorm = clamp(bz / 0.52, 0, 1);
+    // Volume-preserving squash & radial bulge
+    const zScale = 1 - s * 0.62;
+    const bulge = 1 + s * 0.34 * Math.sin(hNorm * Math.PI);
+    const x = bx * bulge + leanX * hNorm * 0.14;
+    const y = by * bulge + leanY * hNorm * 0.14;
+    const z = bz * zScale;
+    pos.setXYZ(i, x, y, z);
+  }
+  pos.needsUpdate = true;
+  geo.computeVertexNormals();
+}
+
+/* ============================================================================
+   4. RENDERER, SCENE, LIGHTING & POST-PROCESSING
+   ============================================================================ */
+const canvas = document.getElementById('c');
+const renderer = new THREE.WebGLRenderer({
+  canvas, antialias: true, powerPreference: 'high-performance', preserveDrawingBuffer: true
+});
+const DPR = Math.min(window.devicePixelRatio || 1, 2);
+renderer.setPixelRatio(DPR);
+renderer.setSize(innerWidth, innerHeight);
+renderer.shadowMap.enabled = true;
+renderer.shadowMap.type = THREE.PCFSoftShadowMap;
+renderer.toneMapping = THREE.NoToneMapping;
+
+const scene = new THREE.Scene();
+scene.background = lin(0x0b0e15);
+scene.fog = new THREE.FogExp2(lin(0x0b0e15), 0.022);
+scene.environment = makeStudioEnvironment(renderer);
+
+const camera = new THREE.PerspectiveCamera(36, innerWidth / innerHeight, 0.1, 120);
+camera.position.set(6.2, 4.9, 6.8);
+
+const controls = new THREE.OrbitControls(camera, canvas);
+controls.target.set(0, 0, 0);
+controls.enableDamping = true;
+controls.dampingFactor = 0.08;
+controls.minDistance = 4.6;
+controls.maxDistance = 18;
+controls.autoRotate = false;
+controls.autoRotateSpeed = 1.1;
+
+// Studio 3-point lighting
+scene.add(new THREE.HemisphereLight(lin(0xcbd9f5), lin(0x1f1912), 0.36));
+
+const keyLight = new THREE.DirectionalLight(lin(0xfff4e6), 1.02);
+keyLight.position.set(6.5, 10.5, 7.5);
+keyLight.castShadow = true;
+keyLight.shadow.mapSize.set(2048, 2048);
+Object.assign(keyLight.shadow.camera, { left: -6, right: 6, top: 6, bottom: -6, near: 2, far: 28 });
+keyLight.shadow.bias = -0.0004;
+keyLight.shadow.normalBias = 0.02;
+scene.add(keyLight);
+
+const fillLight = new THREE.DirectionalLight(lin(0x8ec8ff), 0.58);
+fillLight.position.set(-7, 2.5, -5);
+scene.add(fillLight);
+
+const rimLight = new THREE.DirectionalLight(lin(0xffca85), 0.45);
+rimLight.position.set(1.5, -6, -7);
+scene.add(rimLight);
+
+// HDR Post-processing (Bloom only for emissive > 1.55, then ACES + sRGB)
+const rt = new THREE.WebGLRenderTarget(innerWidth * DPR, innerHeight * DPR, {
+  type: THREE.HalfFloatType, format: THREE.RGBAFormat,
+  minFilter: THREE.LinearFilter, magFilter: THREE.LinearFilter
+});
+const composer = new THREE.EffectComposer(renderer, rt);
+composer.addPass(new THREE.RenderPass(scene, camera));
+const bloomPass = new THREE.UnrealBloomPass(new THREE.Vector2(innerWidth, innerHeight), 0.32, 0.42, 1.55);
+composer.addPass(bloomPass);
+const finalPass = new THREE.ShaderPass({
+  uniforms: { tDiffuse: { value: null }, exposure: { value: 1.05 } },
+  vertexShader: 'varying vec2 vUv; void main(){ vUv=uv; gl_Position=projectionMatrix*modelViewMatrix*vec4(position,1.); }',
+  fragmentShader: `
+    uniform sampler2D tDiffuse; uniform float exposure; varying vec2 vUv;
+    vec3 aces(vec3 x){ return clamp((x*(2.51*x+.03))/(x*(2.43*x+.59)+.14),0.,1.); }
+    void main(){
+      vec3 c = texture2D(tDiffuse, vUv).rgb * exposure;
+      c = aces(c);
+      c = pow(c, vec3(1./2.2));
+      vec2 q = vUv - .5;
+      c *= 1. - .30 * dot(q, q);
+      gl_FragColor = vec4(c, 1.);
+    }`
+});
+composer.addPass(finalPass);
+
+/* ============================================================================
+   5. MATERIALS & 4 CRAFT THEMES
+   ============================================================================ */
+const TEX = {
+  brushed: makeBrushedMetalTexture(),
+  walnut: makeWalnutTexture(),
+  dialPlate: makeDialPlateTexture(),
+  trackball: makeTrackballTexture(),
+};
+
+const MAT = {
+  frame: new THREE.MeshStandardMaterial({ color: lin(0x242934), metalness: 0.72, roughness: 0.34, roughnessMap: TEX.brushed }),
+  bezel: new THREE.MeshPhysicalMaterial({ color: lin(0x1b2029), metalness: 0.55, roughness: 0.38, clearcoat: 0.25, clearcoatRoughness: 0.35 }),
+  cavity: new THREE.MeshStandardMaterial({ color: lin(0x12151c), metalness: 0.35, roughness: 0.62 }),
+  brass: new THREE.MeshStandardMaterial({ color: lin(0xdba852), metalness: 0.94, roughness: 0.24, roughnessMap: TEX.brushed }),
+  steel: new THREE.MeshStandardMaterial({ color: lin(0xc7ced8), metalness: 0.95, roughness: 0.20, roughnessMap: TEX.brushed }),
+  chrome: new THREE.MeshStandardMaterial({ color: lin(0xf2f5fa), metalness: 1.0, roughness: 0.06 }),
+  darkSteel: new THREE.MeshStandardMaterial({ color: lin(0x282d38), metalness: 0.82, roughness: 0.34 }),
+  rubber: new THREE.MeshStandardMaterial({ color: lin(0x1e222a), metalness: 0.04, roughness: 0.85 }),
+  polyClear: new THREE.MeshPhysicalMaterial({ color: lin(0xc8e4ff), metalness: 0.05, roughness: 0.14, transparent: true, opacity: 0.45, clearcoat: 0.8 }),
+  ledCyan: new THREE.MeshStandardMaterial({ color: lin(0x142830), emissive: lin(0x26e8ff), emissiveIntensity: 1.6, roughness: 0.25 }),
+  ledGold: new THREE.MeshStandardMaterial({ color: lin(0x2a2010), emissive: lin(0xffbb44), emissiveIntensity: 1.7, roughness: 0.25 }),
+  toggleLed: new THREE.MeshStandardMaterial({ color: lin(0x143326), emissive: lin(0x1aff9c), emissiveIntensity: 2.2, roughness: 0.2 }),
+  squishGel: new THREE.MeshPhysicalMaterial({
+    color: lin(0x52e0d4), emissive: lin(0x146e68), emissiveIntensity: 0.55,
+    metalness: 0.0, roughness: 0.14, clearcoat: 1.0, clearcoatRoughness: 0.08,
+    transparent: true, opacity: 0.84
+  }),
+  trackball: new THREE.MeshStandardMaterial({ map: TEX.trackball, metalness: 0.88, roughness: 0.15 }),
+  dialPlate: new THREE.MeshStandardMaterial({ map: TEX.dialPlate, metalness: 0.45, roughness: 0.45 }),
+  coreGlow: new THREE.MeshStandardMaterial({ color: lin(0x182838), emissive: lin(0x35d6ff), emissiveIntensity: 1.85, roughness: 0.25 }),
+};
+
+const keycapMats = [];
+const keycapSideMats = [];
+const popMats = [];
+
+const THEMES = {
+  obsidian: {
+    bg: 0x0b0e15,
+    frame: { color: 0x242934, metalness: 0.58, roughness: 0.50, map: null, opacity: 1, transparent: false },
+    bezel: { color: 0x1b2029, metalness: 0.48, roughness: 0.46, map: null, opacity: 1, transparent: false },
+    cavity: 0x12151c,
+    accentMetal: 0xdba852,
+    keyColors: [['#c94b3c', '#fff4ee'], ['#2a313e', '#d6e2f0'], ['#2a313e', '#d6e2f0'], ['#d49f46', '#16181f']],
+    popColors: [0x2cd4c4, 0x3ec6e8, 0x6b9cff, 0xf2a74b, 0xff6e7a, 0x8be28b, 0xc38cff, 0x4cd4e8, 0xffbe55],
+    squish: [0x52e0d4, 0x146e68],
+    coreGlow: 0x35d6ff
+  },
+  macaron: {
+    bg: 0x161922,
+    frame: { color: 0xf0eae0, metalness: 0.08, roughness: 0.42, map: null, opacity: 1, transparent: false },
+    bezel: { color: 0xe3dcd0, metalness: 0.06, roughness: 0.48, map: null, opacity: 1, transparent: false },
+    cavity: 0xc9c0b2,
+    accentMetal: 0xd3dae6,
+    keyColors: [['#ff9aa2', '#ffffff'], ['#8ce0cf', '#1b3b36'], ['#ffdac1', '#4a3525'], ['#b5b9ff', '#252850']],
+    popColors: [0xff9aa2, 0xffb7b2, 0xffdac1, 0xe2f0cb, 0xb5ead7, 0xc7ceea, 0x99d8ff, 0xf7b2d9, 0xffe699],
+    squish: [0xff9ebb, 0x993556],
+    coreGlow: 0x7ef0dc
+  },
+  cyber: {
+    bg: 0x070a12,
+    frame: { color: 0x20324a, metalness: 0.25, roughness: 0.22, map: null, opacity: 0.72, transparent: true },
+    bezel: { color: 0x142236, metalness: 0.30, roughness: 0.20, map: null, opacity: 0.78, transparent: true },
+    cavity: 0x0c1320,
+    accentMetal: 0x4be3ff,
+    keyColors: [['#132238', '#00f0ff'], ['#281436', '#ff47b6'], ['#142a38', '#48ffbe'], ['#1d2438', '#ffe156']],
+    popColors: [0x00f0ff, 0x22d3ee, 0x6366f1, 0xec4899, 0xa855f7, 0x14b8a6, 0x38bdf8, 0xf43f5e, 0xfacc15],
+    squish: [0xd946ef, 0x7e149c],
+    coreGlow: 0x00f0ff
+  },
+  walnut: {
+    bg: 0x110e0c,
+    frame: { color: 0xffffff, metalness: 0.06, roughness: 0.56, map: TEX.walnut, opacity: 1, transparent: false },
+    bezel: { color: 0xdcd2c2, metalness: 0.08, roughness: 0.45, map: null, opacity: 1, transparent: false },
+    cavity: 0x2c2018,
+    accentMetal: 0xc98249,
+    keyColors: [['#b85435', '#fff8f0'], ['#f0e7d8', '#3c2b1e'], ['#f0e7d8', '#3c2b1e'], ['#7a8c72', '#f7f5f0']],
+    popColors: [0xd98a5f, 0xe8b97c, 0x8ea885, 0x7599a6, 0xc77d70, 0xbfa37c, 0x998c9e, 0xc99c63, 0x85a695],
+    squish: [0xf0b575, 0x874d14],
+    coreGlow: 0xffb35c
+  }
+};
+
+function applyTheme(name) {
+  const th = THEMES[name];
+  if (!th) return;
+  scene.background = lin(th.bg);
+  scene.fog.color = lin(th.bg);
+
+  Object.assign(MAT.frame, {
+    color: lin(th.frame.color), metalness: th.frame.metalness, roughness: th.frame.roughness,
+    map: th.frame.map, transparent: th.frame.transparent, opacity: th.frame.opacity,
+    roughnessMap: th.frame.map ? null : TEX.brushed
+  });
+  MAT.frame.needsUpdate = true;
+
+  Object.assign(MAT.bezel, {
+    color: lin(th.bezel.color), metalness: th.bezel.metalness, roughness: th.bezel.roughness,
+    map: th.bezel.map, transparent: th.bezel.transparent, opacity: th.bezel.opacity
+  });
+  MAT.bezel.needsUpdate = true;
+
+  MAT.cavity.color = lin(th.cavity);
+  MAT.brass.color = lin(th.accentMetal);
+  MAT.coreGlow.emissive = lin(th.coreGlow);
+  MAT.squishGel.color = lin(th.squish[0]);
+  MAT.squishGel.emissive = lin(th.squish[1]);
+
+  const labels = [['ESC', 'Q / 1'], ['ZEN', 'W / 2'], ['THOCK', 'E / 3'], ['POP!', 'R / 4']];
+  keycapMats.forEach((m, i) => {
+    const [bg, fg] = th.keyColors[i];
+    if (m.map) m.map.dispose();
+    m.map = makeKeyLegendTexture(labels[i][0], labels[i][1], bg, fg);
+    m.needsUpdate = true;
+    if (keycapSideMats[i]) {
+      keycapSideMats[i].color = lin(bg);
+    }
+  });
+
+  popMats.forEach((m, i) => {
+    const hex = th.popColors[i];
+    m.color = lin(hex);
+    m.emissive = lin(hex);
+  });
+}
+
+/* ============================================================================
+   6. BUILD CUBE CHASSIS, INTERNAL CORE, LEVITATION PEDESTAL & 6 INTERACTIVE FACES
+   ============================================================================ */
+const cubeRoot = new THREE.Group();
+cubeRoot.name = 'TactileFidgetCube';
+scene.add(cubeRoot);
+
+const shadows = (o) => {
+  o.traverse(c => {
+    if (c.isMesh) { c.castShadow = true; c.receiveShadow = true; }
+  });
+  return o;
+};
+
+// 6.1 Internal Core (visible on Exploded View or Cyber Translucent theme!)
+const innerCore = new THREE.Group();
+innerCore.name = 'Inner_Precision_Core';
+const coreBlock = new THREE.Mesh(new THREE.BoxGeometry(1.42, 1.42, 1.42), MAT.darkSteel);
+const coreRingGeo = new THREE.TorusGeometry(1.06, 0.065, 16, 48);
+const ringXY = new THREE.Mesh(coreRingGeo, MAT.brass);
+const ringYZ = new THREE.Mesh(coreRingGeo, MAT.brass); ringYZ.rotation.y = Math.PI / 2;
+const ringXZ = new THREE.Mesh(coreRingGeo, MAT.coreGlow); ringXZ.rotation.x = Math.PI / 2;
+const coreSphere = new THREE.Mesh(new THREE.OctahedronGeometry(0.56, 1), MAT.coreGlow);
+innerCore.add(coreBlock, ringXY, ringYZ, ringXZ, coreSphere);
+// 6 mounting standoffs
+[[1,0,0],[-1,0,0],[0,1,0],[0,-1,0],[0,0,1],[0,0,-1]].forEach(([x,y,z]) => {
+  const pin = new THREE.Mesh(new THREE.CylinderGeometry(0.16, 0.20, 0.72, 16), MAT.steel);
+  pin.position.set(x * 1.08, y * 1.08, z * 1.08);
+  if (x) pin.rotation.z = Math.PI / 2;
+  if (z) pin.rotation.x = Math.PI / 2;
+  innerCore.add(pin);
+});
+cubeRoot.add(shadows(innerCore));
+
+// 6.2 Outer CNC Skeleton Frame (8 Rounded Corner Lugs + 12 Edge Rails)
+const chassisGroup = new THREE.Group();
+chassisGroup.name = 'CNC_Chassis_Skeleton';
+const cornerGeo = new THREE.BoxGeometry(0.30, 0.30, 0.30);
+const cornerCapGeo = new THREE.SphereGeometry(0.072, 16, 12);
+for (const sx of [-1, 1]) for (const sy of [-1, 1]) for (const sz of [-1, 1]) {
+  const cMesh = new THREE.Mesh(cornerGeo, MAT.frame);
+  cMesh.position.set(sx * 1.84, sy * 1.84, sz * 1.84);
+  chassisGroup.add(cMesh);
+  // Subtle flush corner pin
+  const stud = new THREE.Mesh(cornerCapGeo, MAT.brass);
+  stud.position.set(sx * 1.89, sy * 1.89, sz * 1.89);
+  chassisGroup.add(stud);
+}
+// 12 edge rails (length 3.36, 0.28x0.28)
+const railGeoX = new THREE.BoxGeometry(3.36, 0.28, 0.28);
+const railGeoY = new THREE.BoxGeometry(0.28, 3.36, 0.28);
+const railGeoZ = new THREE.BoxGeometry(0.28, 0.28, 3.36);
+for (const a of [-1, 1]) for (const b of [-1, 1]) {
+  const rx = new THREE.Mesh(railGeoX, MAT.frame); rx.position.set(0, a * 1.86, b * 1.86);
+  const ry = new THREE.Mesh(railGeoY, MAT.frame); ry.position.set(a * 1.86, 0, b * 1.86);
+  const rz = new THREE.Mesh(railGeoZ, MAT.frame); rz.position.set(a * 1.86, b * 1.86, 0);
+  chassisGroup.add(rx, ry, rz);
+}
+cubeRoot.add(shadows(chassisGroup));
+
+// 6.3 Magnetic Levitation Desk Pedestal (Sits below cube at y = -3.15)
+const pedestalGroup = new THREE.Group();
+pedestalGroup.name = 'Levitation_Pedestal';
+pedestalGroup.position.set(0, -3.15, 0);
+const pedBase = new THREE.Mesh(new THREE.CylinderGeometry(2.25, 2.55, 0.28, 48), MAT.bezel);
+const pedTrim = new THREE.Mesh(new THREE.TorusGeometry(2.26, 0.045, 16, 64), MAT.brass);
+pedTrim.rotation.x = Math.PI / 2; pedTrim.position.y = 0.13;
+const pedGlowRing = new THREE.Mesh(new THREE.TorusGeometry(1.42, 0.028, 12, 64), MAT.coreGlow);
+pedGlowRing.rotation.x = Math.PI / 2; pedGlowRing.position.y = 0.15;
+const pedDish = new THREE.Mesh(new THREE.CylinderGeometry(1.38, 1.38, 0.05, 48), MAT.cavity);
+pedDish.position.y = 0.13;
+pedestalGroup.add(pedBase, pedTrim, pedGlowRing, pedDish);
+scene.add(shadows(pedestalGroup));
+
+// Floor shadow catcher
+const floorPlane = new THREE.Mesh(
+  new THREE.CircleGeometry(14, 48),
+  new THREE.ShadowMaterial({ opacity: 0.35 })
+);
+floorPlane.rotation.x = -Math.PI / 2;
+floorPlane.position.y = -3.30;
+floorPlane.receiveShadow = true;
+scene.add(floorPlane);
+
+/* ============================================================================
+   7. BUILD THE 6 INTERACTIVE FACE ASSEMBLIES (Local +Z Outward!)
+   ============================================================================ */
+const faceDefs = [
+  { id: 'top',    name: '機械鍵軸矩陣',     normal: [0, 1, 0],  rot: [-Math.PI / 2, 0, 0], cam: [0.35, 7.2, 2.3] },
+  { id: 'front',  name: '矽膠泡泡樂',       normal: [0, 0, 1],  rot: [0, 0, 0],            cam: [0.9, 1.1, 7.6] },
+  { id: 'right',  name: '棘輪旋鈕與齒輪',   normal: [1, 0, 0],  rot: [0, Math.PI / 2, 0],  cam: [7.6, 1.1, 1.2] },
+  { id: 'left',   name: '磁吸推牌與撥動開關', normal: [-1, 0, 0], rot: [0, -Math.PI / 2, 0], cam: [-7.6, 1.0, 1.2] },
+  { id: 'back',   name: '鋼珠軌道與軌跡球', normal: [0, 0, -1], rot: [0, Math.PI, 0],      cam: [-1.0, 1.1, -7.6] },
+  { id: 'bottom', name: '360° 搖桿與捏捏球', normal: [0, -1, 0], rot: [Math.PI / 2, 0, 0],  cam: [0.4, -7.2, 2.3] },
+];
+
+const faceGroups = {};
+const bezelGeo = createFaceBezelGeo();
+const interactiveMeshes = [];
+
+const hitMeshes = [];
+function registerInteractive(mesh, meta) {
+  mesh.userData.interact = meta;
+  interactiveMeshes.push(mesh);
+  if (mesh.material && mesh.material.visible === false) {
+    mesh.userData.isHitbox = true;
+    hitMeshes.push(mesh);
+  }
+  return mesh;
+}
+
+function createBaseFaceAssembly(def, floorZ = 1.66) {
+  const g = new THREE.Group();
+  g.name = 'Face_' + def.id;
+  g.rotation.set(def.rot[0], def.rot[1], def.rot[2]);
+  g.userData.normal = new THREE.Vector3(...def.normal);
+
+  const bezel = new THREE.Mesh(bezelGeo, MAT.bezel);
+  const floor = new THREE.Mesh(new THREE.BoxGeometry(3.32, 3.32, 0.08), MAT.cavity);
+  floor.position.z = floorZ;
+  g.add(bezel, floor);
+
+  // 4 M3 hex socket screws at bezel corners
+  for (const sx of [-1, 1]) for (const sy of [-1, 1]) {
+    const scr = createM3ScrewMesh(MAT.darkSteel, MAT.steel);
+    scr.position.set(sx * 1.56, sy * 1.56, 1.995);
+    g.add(scr);
+  }
+  cubeRoot.add(g);
+  faceGroups[def.id] = g;
+  return g;
+}
+
+// ----------------------------------------------------------------------------
+// FACE 1 (+Y TOP): 2×2 CUSTOM MECHANICAL KEYBOARD SWITCHES
+// ----------------------------------------------------------------------------
+const switchesState = [];
+{
+  const fTop = createBaseFaceAssembly(faceDefs[0], 1.68);
+  // Brushed aluminum switch plate
+  const plate = new THREE.Mesh(new THREE.BoxGeometry(2.86, 2.86, 0.05), MAT.steel);
+  plate.position.z = 1.75;
+  fTop.add(plate);
+
+  const keyPos = [[-0.66, 0.66], [0.66, 0.66], [-0.66, -0.66], [0.66, -0.66]];
+  const keyLabels = [['ESC', 'Q / 1'], ['ZEN', 'W / 2'], ['THOCK', 'E / 3'], ['POP!', 'R / 4']];
+  const keyGeo = createSculptedKeycapGeo(1.08, 0.80, 0.36);
+
+  // Build visible helical spring geometry once
+  const springPts = [];
+  for (let i = 0; i <= 48; i++) {
+    const t = i / 48;
+    const a = t * TAU * 4.5;
+    springPts.push(new THREE.Vector3(Math.cos(a) * 0.075, Math.sin(a) * 0.075, t * 0.24));
+  }
+  const springGeo = new THREE.TubeGeometry(new THREE.CatmullRomCurve3(springPts), 40, 0.015, 6, false);
+
+  keyPos.forEach(([kx, ky], idx) => {
+    const swGroup = new THREE.Group();
+    swGroup.position.set(kx, ky, 1.78);
+
+    // RGB Halo Ring
+    const ledMat = new THREE.MeshStandardMaterial({
+      color: lin(0x182530), emissive: lin(idx === 0 ? 0xff5a45 : 0x35e2ff),
+      emissiveIntensity: 0.45, roughness: 0.25
+    });
+    const halo = new THREE.Mesh(new THREE.TorusGeometry(0.46, 0.022, 10, 32), ledMat);
+    halo.position.z = 0.02;
+
+    // Translucent switch housing + visible brass spring
+    const housing = new THREE.Mesh(new THREE.BoxGeometry(0.68, 0.68, 0.20), MAT.polyClear);
+    housing.position.z = 0.10;
+    const springMesh = new THREE.Mesh(springGeo, MAT.brass);
+    springMesh.position.z = 0.02;
+
+    // Moving plunger + MX cross stem + sculpted PBT keycap
+    const mover = new THREE.Group();
+    mover.position.z = 0.24;
+
+    const stemV = new THREE.Mesh(new THREE.BoxGeometry(0.06, 0.24, 0.14), MAT.brass);
+    const stemH = new THREE.Mesh(new THREE.BoxGeometry(0.24, 0.06, 0.14), MAT.brass);
+    stemV.position.z = stemH.position.z = -0.02;
+
+    const kcSideMat = new THREE.MeshStandardMaterial({
+      color: lin('#2a313e'), roughness: 0.48, metalness: 0.08
+    });
+    const kcMat = new THREE.MeshStandardMaterial({
+      map: makeKeyLegendTexture(keyLabels[idx][0], keyLabels[idx][1], '#2a313e', '#eef4fa'),
+      roughness: 0.46, metalness: 0.08
+    });
+    keycapSideMats.push(kcSideMat);
+    keycapMats.push(kcMat);
+
+    const keycap = new THREE.Mesh(keyGeo, [kcSideMat, kcMat]);
+    keycap.position.z = 0.04;
+    registerInteractive(keycap, {
+      type: 'key', face: 'top', idx,
+      hint: `機械鍵軸 [${keyLabels[idx][0]}] · 點擊或按鍵盤 ${keyLabels[idx][1]}`
+    });
+
+    mover.add(stemV, stemH, keycap);
+    swGroup.add(halo, housing, springMesh, mover);
+    fTop.add(swGroup);
+
+    switchesState.push({
+      idx, mover, springMesh, ledMat,
+      press: 0, vel: 0, target: 0, glow: 0.45,
+      baseZ: 0.24, travel: 0.20, isDown: false
+    });
+  });
+  shadows(fTop);
+}
+
+// ----------------------------------------------------------------------------
+// FACE 2 (+Z FRONT): 3×3 INFINITE SILICONE POP-IT MATRIX
+// ----------------------------------------------------------------------------
+const popState = { domes: [], resetting: false, resetTimer: 0 };
+{
+  const fFront = createBaseFaceAssembly(faceDefs[1], 1.54);
+  const wellMat = MAT.darkSteel;
+  const popCarrier = new THREE.Mesh(createPopPlateGeo(), MAT.cavity);
+  fFront.add(popCarrier);
+
+  for (let row = 0; row < 3; row++) {
+    for (let col = 0; col < 3; col++) {
+      const idx = row * 3 + col;
+      const px = (col - 1) * 0.88;
+      const py = (1 - row) * 0.88;
+
+      const wellGroup = new THREE.Group();
+      wellGroup.position.set(px, py, 1.84);
+
+      const collar = new THREE.Mesh(new THREE.TorusGeometry(0.36, 0.036, 12, 32), wellMat);
+      const pMat = new THREE.MeshPhysicalMaterial({
+        color: lin(0x2cd4c4), emissive: lin(0x2cd4c4), emissiveIntensity: 0.10,
+        metalness: 0.02, roughness: 0.32, clearcoat: 0.35, clearcoatRoughness: 0.35,
+        side: THREE.DoubleSide
+      });
+      popMats.push(pMat);
+
+      const domeGeo = createPopDomeGeometry(0.34);
+      const dome = new THREE.Mesh(domeGeo, pMat);
+      registerInteractive(dome, {
+        type: 'pop', face: 'front', idx,
+        hint: '矽膠泡泡樂 · 點擊或滑過連按 (全按完自動彈回!)'
+      });
+
+      wellGroup.add(collar, dome);
+      fFront.add(wellGroup);
+
+      popState.domes.push({
+        idx, geo: domeGeo, mat: pMat,
+        val: 1.0, vel: 0, target: 1.0, lastSwiped: 0
+      });
+    }
+  }
+  shadows(fFront);
+}
+
+// ----------------------------------------------------------------------------
+// FACE 3 (+X RIGHT): PRECISION RATCHET DIAL & MESHED INVOLUTE GEARS
+// ----------------------------------------------------------------------------
+const dialState = { angle: 0, vel: 0, dragging: false, lastPointerAngle: 0, lastDetent: 0, pawlBounce: 0 };
+const gearMeshes = {};
+{
+  const fRight = createBaseFaceAssembly(faceDefs[2], 1.66);
+
+  // Engraved degree dial plate
+  const dialPlate = new THREE.Mesh(new THREE.CircleGeometry(0.78, 48), MAT.dialPlate);
+  dialPlate.position.set(-0.42, -0.22, 1.708);
+  fRight.add(dialPlate);
+
+  // Exact involute gear math (m = 0.048):
+  // G1 (24T) at (-0.42, -0.22), G2 (16T) at alpha=-22°, G3 (12T) at alpha=+68° from G2
+  const m = 0.048;
+  const G1 = { x: -0.42, y: -0.22, N: 24 };
+  const C12 = m * (24 + 16) / 2;
+  const a12 = -22 * DEG;
+  const G2 = { x: G1.x + C12 * Math.cos(a12), y: G1.y + C12 * Math.sin(a12), N: 16 };
+  const C23 = m * (16 + 12) / 2;
+  const a23 = 68 * DEG;
+  const G3 = { x: G2.x + C23 * Math.cos(a23), y: G2.y + C23 * Math.sin(a23), N: 12 };
+
+  const g1Data = createInvoluteGearGeo(G1.N, m, 0.11, 0.14, 6);
+  const g2Data = createInvoluteGearGeo(G2.N, m, 0.11, 0.09, 5);
+  const g3Data = createInvoluteGearGeo(G3.N, m, 0.11, 0.08, 4);
+
+  const g1Mesh = new THREE.Mesh(g1Data.geo, MAT.steel);
+  g1Mesh.position.set(G1.x, G1.y, 1.79);
+  const g2Mesh = new THREE.Mesh(g2Data.geo, MAT.brass);
+  g2Mesh.position.set(G2.x, G2.y, 1.79);
+  const g3Mesh = new THREE.Mesh(g3Data.geo, MAT.steel);
+  g3Mesh.position.set(G3.x, G3.y, 1.79);
+
+  // Coaxial center bearing pins
+  [G1, G2, G3].forEach((gp, i) => {
+    const pin = new THREE.Mesh(new THREE.CylinderGeometry(i === 0 ? 0.13 : 0.075, i === 0 ? 0.13 : 0.075, 0.18, 20), MAT.chrome);
+    pin.rotation.x = Math.PI / 2;
+    pin.position.set(gp.x, gp.y, 1.81);
+    fRight.add(pin);
+  });
+
+  // 24-tooth Sawtooth Ratchet Wheel above G1 (z = 1.91)
+  const ratchetMesh = new THREE.Mesh(createRatchetWheelGeo(24, 0.54, 0.44, 0.06, 0.14), MAT.brass);
+  ratchetMesh.position.set(G1.x, G1.y, 1.91);
+
+  // Spring-loaded Steel Pawl pivoted at (-0.98, +0.44) engaging ratchet tooth near (-0.52, +0.30)
+  const pawlPivot = new THREE.Group();
+  pawlPivot.position.set(-0.98, 0.44, 1.91);
+  const pawlArm = new THREE.Mesh(new THREE.BoxGeometry(0.56, 0.085, 0.055), MAT.chrome);
+  pawlArm.position.set(0.24, -0.02, 0);
+  pawlArm.rotation.z = -0.26;
+  const pawlPin = new THREE.Mesh(new THREE.CylinderGeometry(0.065, 0.065, 0.09, 16), MAT.brass);
+  pawlPin.rotation.x = Math.PI / 2;
+  pawlPivot.add(pawlArm, pawlPin);
+
+  // Knurled Master Crown Dial on top of G1
+  const dialGroup = new THREE.Group();
+  dialGroup.position.set(G1.x, G1.y, 2.04);
+  const dialBody = new THREE.Mesh(createKnurledDialGeo(0.42, 0.16, 20), MAT.darkSteel);
+  const dialCap = new THREE.Mesh(new THREE.CylinderGeometry(0.30, 0.32, 0.06, 32), MAT.brass);
+  dialCap.rotation.x = Math.PI / 2; dialCap.position.z = 0.09;
+  const dialMarker = new THREE.Mesh(new THREE.BoxGeometry(0.16, 0.036, 0.03), MAT.ledGold);
+  dialMarker.position.set(0.18, 0, 0.12);
+  dialGroup.add(dialBody, dialCap, dialMarker);
+
+  // Invisible slightly larger drag disc for super comfortable grabbing
+  const dialHit = new THREE.Mesh(
+    new THREE.CylinderGeometry(0.68, 0.68, 0.36, 24),
+    new THREE.MeshBasicMaterial({ visible: false })
+  );
+  dialHit.rotation.x = Math.PI / 2;
+  dialHit.position.set(G1.x, G1.y, 2.02);
+  registerInteractive(dialHit, {
+    type: 'dial', face: 'right', cx: G1.x, cy: G1.y,
+    hint: '棘輪齒輪旋鈕 · 畫圓拖曳或快速甩動，感受 24 齒棘輪手感'
+  });
+
+  fRight.add(g1Mesh, g2Mesh, g3Mesh, ratchetMesh, pawlPivot, dialGroup, dialHit);
+  Object.assign(gearMeshes, { G1, G2, G3, a12, a23, g1Mesh, g2Mesh, g3Mesh, ratchetMesh, dialGroup, pawlPivot });
+  shadows(fRight);
+}
+
+// ----------------------------------------------------------------------------
+// FACE 4 (-X LEFT): MAGNETIC HAPTIC SLIDER + AIRCRAFT TOGGLE SWITCH
+// ----------------------------------------------------------------------------
+const sliderState = { y: 0.55, vel: 0, targetDetent: 1, dragging: false, grabOffset: 0, lastDetent: 1 };
+const toggleState = { on: true, angle: 0.48, vel: 0, targetAngle: 0.48 };
+{
+  const fLeft = createBaseFaceAssembly(faceDefs[3], 1.66);
+
+  // --- Left Zone: Magnetic Haptic Slider ---
+  const trackX = -0.58;
+  const trackBase = new THREE.Mesh(new THREE.BoxGeometry(1.06, 2.46, 0.08), MAT.steel);
+  trackBase.position.set(trackX, 0, 1.72);
+  fLeft.add(trackBase);
+
+  // 2 linear slide rails
+  for (const dx of [-0.46, 0.46]) {
+    const rail = new THREE.Mesh(new THREE.BoxGeometry(0.08, 2.42, 0.14), MAT.darkSteel);
+    rail.position.set(trackX + dx, 0, 1.77);
+    fLeft.add(rail);
+  }
+  // 6 gleaming visible neodymium disc magnets (3 pairs along track)
+  for (const my of [-0.74, 0, 0.74]) {
+    for (const dx of [-0.22, 0.22]) {
+      const magCollar = new THREE.Mesh(new THREE.CylinderGeometry(0.11, 0.11, 0.04, 20), MAT.brass);
+      magCollar.rotation.x = Math.PI / 2;
+      magCollar.position.set(trackX + dx, my, 1.76);
+      const magCore = new THREE.Mesh(new THREE.CylinderGeometry(0.08, 0.08, 0.05, 20), MAT.chrome);
+      magCore.rotation.x = Math.PI / 2;
+      magCore.position.set(trackX + dx, my, 1.765);
+      fLeft.add(magCollar, magCore);
+    }
+  }
+
+  // Sliding Shuttle Plate
+  const shuttleGroup = new THREE.Group();
+  shuttleGroup.position.set(trackX, 0.55, 1.94);
+  const shuttleBody = new THREE.Mesh(new THREE.BoxGeometry(0.86, 1.12, 0.18), MAT.bezel);
+  const shuttleBrass = new THREE.Mesh(new THREE.BoxGeometry(0.76, 0.18, 0.20), MAT.brass);
+  shuttleGroup.add(shuttleBody, shuttleBrass);
+  for (let i = -3; i <= 3; i++) {
+    if (i === 0) continue;
+    const rib = new THREE.Mesh(new THREE.BoxGeometry(0.68, 0.045, 0.03), MAT.steel);
+    rib.position.set(0, i * 0.135, 0.095);
+    shuttleGroup.add(rib);
+  }
+  registerInteractive(shuttleBody, {
+    type: 'slider', face: 'left',
+    hint: 'CNC 磁吸推牌 · 上下拖曳或點擊切換 3 段磁力定位'
+  });
+  registerInteractive(trackBase, {
+    type: 'slider', face: 'left',
+    hint: 'CNC 磁吸推牌 · 上下拖曳或點擊切換 3 段磁力定位'
+  });
+  fLeft.add(shuttleGroup);
+  sliderState.mesh = shuttleGroup;
+
+  // --- Right Zone: Aircraft Safety Toggle Switch ---
+  const swX = 0.62, swY = -0.06;
+  const swPlate = new THREE.Mesh(new THREE.BoxGeometry(0.96, 1.62, 0.08), MAT.darkSteel);
+  swPlate.position.set(swX, swY, 1.72);
+  fLeft.add(swPlate);
+
+  // Hex mounting nut + bushing
+  const hexNut = new THREE.Mesh(new THREE.CylinderGeometry(0.24, 0.24, 0.08, 6), MAT.brass);
+  hexNut.rotation.x = Math.PI / 2; hexNut.position.set(swX, swY, 1.79);
+  const collar = new THREE.Mesh(new THREE.CylinderGeometry(0.14, 0.16, 0.12, 20), MAT.chrome);
+  collar.rotation.x = Math.PI / 2; collar.position.set(swX, swY, 1.84);
+  fLeft.add(hexNut, collar);
+
+  // Dual protective guard rails
+  for (const dx of [-0.30, 0.30]) {
+    const post = new THREE.Mesh(new THREE.CylinderGeometry(0.032, 0.032, 0.42, 12), MAT.steel);
+    post.rotation.x = Math.PI / 2; post.position.set(swX + dx, swY - 0.32, 1.94);
+    const post2 = post.clone(); post2.position.set(swX + dx, swY + 0.32, 1.94);
+    const bar = new THREE.Mesh(new THREE.CylinderGeometry(0.032, 0.032, 0.66, 12), MAT.steel);
+    bar.position.set(swX + dx, swY, 2.15);
+    fLeft.add(post, post2, bar);
+  }
+
+  // Pivoting chrome bat-handle lever
+  const leverPivot = new THREE.Group();
+  leverPivot.position.set(swX, swY, 1.88);
+  const leverShaft = new THREE.Mesh(new THREE.CylinderGeometry(0.078, 0.042, 0.56, 18), MAT.chrome);
+  leverShaft.rotation.x = Math.PI / 2; leverShaft.position.z = 0.28;
+  const leverTip = new THREE.Mesh(new THREE.SphereGeometry(0.082, 18, 14), MAT.chrome);
+  leverTip.position.z = 0.56;
+  leverPivot.add(leverShaft, leverTip);
+  leverPivot.rotation.x = -toggleState.angle;
+  fLeft.add(leverPivot);
+  toggleState.pivot = leverPivot;
+
+  // Status Jewel LED
+  const ledBezel = new THREE.Mesh(new THREE.CylinderGeometry(0.14, 0.16, 0.06, 20), MAT.brass);
+  ledBezel.rotation.x = Math.PI / 2; ledBezel.position.set(swX, 0.94, 1.74);
+  const ledGem = new THREE.Mesh(new THREE.SphereGeometry(0.10, 18, 14), MAT.toggleLed);
+  ledGem.position.set(swX, 0.94, 1.77);
+  fLeft.add(ledBezel, ledGem);
+
+  const toggleHit = new THREE.Mesh(
+    new THREE.BoxGeometry(0.92, 1.56, 0.65),
+    new THREE.MeshBasicMaterial({ visible: false })
+  );
+  toggleHit.position.set(swX, swY, 2.04);
+  registerInteractive(toggleHit, {
+    type: 'toggle', face: 'left',
+    hint: '航空撥動開關 · 點擊強力切換 ON / OFF'
+  });
+  fLeft.add(toggleHit);
+  shadows(fLeft);
+}
+
+// ----------------------------------------------------------------------------
+// FACE 5 (-Z BACK): ORBITAL STEEL BALL TRACK + HEAVY CHROME TRACKBALL
+// ----------------------------------------------------------------------------
+const ballsState = { cy: 0.54, R: 0.60, rBall: 0.095, balls: [], dragging: false, lastAngle: 0 };
+const trackballState = { cx: 0, cy: -0.80, radius: 0.38, angVel: new THREE.Vector3(), dragging: false, lastPt: new THREE.Vector2() };
+{
+  const fBack = createBaseFaceAssembly(faceDefs[4], 1.66);
+
+  // --- Upper Orbital Steel Ball Ring ---
+  const ringPlate = new THREE.Mesh(new THREE.CylinderGeometry(0.76, 0.76, 0.08, 48), MAT.darkSteel);
+  ringPlate.rotation.x = Math.PI / 2; ringPlate.position.set(0, ballsState.cy, 1.71);
+  const outerRim = new THREE.Mesh(new THREE.TorusGeometry(0.72, 0.048, 14, 48), MAT.brass);
+  outerRim.position.set(0, ballsState.cy, 1.79);
+  const innerRim = new THREE.Mesh(new THREE.TorusGeometry(0.48, 0.048, 14, 48), MAT.brass);
+  innerRim.position.set(0, ballsState.cy, 1.79);
+  const centerJewel = new THREE.Mesh(new THREE.CylinderGeometry(0.44, 0.44, 0.11, 36), MAT.bezel);
+  centerJewel.rotation.x = Math.PI / 2; centerJewel.position.set(0, ballsState.cy, 1.74);
+  fBack.add(ringPlate, outerRim, innerRim, centerJewel);
+
+  // 6 mirror chrome steel balls in groove
+  const ballGeo = new THREE.SphereGeometry(ballsState.rBall, 22, 18);
+  for (let i = 0; i < 6; i++) {
+    const a = i * 0.42; // Clustered slightly like a ring Newton's cradle!
+    const bMesh = new THREE.Mesh(ballGeo, MAT.chrome);
+    bMesh.position.set(Math.cos(a) * ballsState.R, ballsState.cy + Math.sin(a) * ballsState.R, 1.84);
+    fBack.add(bMesh);
+    ballsState.balls.push({ angle: a, vel: 0, mesh: bMesh });
+  }
+
+  const ballsHit = new THREE.Mesh(
+    new THREE.CylinderGeometry(0.78, 0.78, 0.30, 32),
+    new THREE.MeshBasicMaterial({ visible: false })
+  );
+  ballsHit.rotation.x = Math.PI / 2; ballsHit.position.set(0, ballsState.cy, 1.84);
+  registerInteractive(ballsHit, {
+    type: 'balls', face: 'back',
+    hint: '循環鋼珠軌道 · 繞圈撥動鋼珠，體驗清脆碰撞回彈'
+  });
+  fBack.add(ballsHit);
+
+  // --- Lower Heavy Chrome Trackball ---
+  const cupRing = new THREE.Mesh(new THREE.TorusGeometry(0.45, 0.06, 16, 40), MAT.brass);
+  cupRing.position.set(0, trackballState.cy, 1.82);
+  const cupBowl = new THREE.Mesh(new THREE.CylinderGeometry(0.44, 0.48, 0.14, 32), MAT.darkSteel);
+  cupBowl.rotation.x = Math.PI / 2; cupBowl.position.set(0, trackballState.cy, 1.74);
+  fBack.add(cupRing, cupBowl);
+
+  // 3 little brass bearing studs around cup rim
+  for (let i = 0; i < 3; i++) {
+    const a = i * TAU / 3 + Math.PI / 6;
+    const stud = new THREE.Mesh(new THREE.SphereGeometry(0.042, 12, 10), MAT.chrome);
+    stud.position.set(Math.cos(a) * 0.42, trackballState.cy + Math.sin(a) * 0.42, 1.88);
+    fBack.add(stud);
+  }
+
+  const tbMesh = new THREE.Mesh(new THREE.SphereGeometry(trackballState.radius, 32, 24), MAT.trackball);
+  tbMesh.position.set(0, trackballState.cy, 1.88);
+  registerInteractive(tbMesh, {
+    type: 'trackball', face: 'back',
+    hint: '萬向金屬軌跡球 · 朝任意方向撥動滾轉'
+  });
+  fBack.add(tbMesh);
+  trackballState.mesh = tbMesh;
+  shadows(fBack);
+}
+
+// ----------------------------------------------------------------------------
+// FACE 6 (-Y BOTTOM): 360° ANALOG THUMBSTICK + SOFT-BODY JELLY SQUISH DOME
+// ----------------------------------------------------------------------------
+const stickState = { cx: -0.56, cy: 0.42, x: 0, y: 0, vx: 0, vy: 0, dragging: false, maxR: 0.36 };
+const squishState = { cx: 0.56, cy: -0.44, val: 0, vel: 0, target: 0, leanX: 0, leanY: 0, pressing: false };
+{
+  const fBot = createBaseFaceAssembly(faceDefs[5], 1.66);
+
+  // --- 360° Analog Thumbstick ---
+  const gateRing = new THREE.Mesh(new THREE.TorusGeometry(0.54, 0.055, 10, 8), MAT.brass);
+  gateRing.position.set(stickState.cx, stickState.cy, 1.76);
+  const gateWell = new THREE.Mesh(new THREE.CylinderGeometry(0.50, 0.50, 0.08, 8), MAT.darkSteel);
+  gateWell.rotation.x = Math.PI / 2; gateWell.position.set(stickState.cx, stickState.cy, 1.72);
+  fBot.add(gateRing, gateWell);
+
+  const stickPivot = new THREE.Group();
+  stickPivot.position.set(stickState.cx, stickState.cy, 1.72);
+  const boot = new THREE.Mesh(new THREE.SphereGeometry(0.24, 20, 14), MAT.rubber);
+  boot.scale.set(1, 1, 0.55); boot.position.z = 0.08;
+  const shaft = new THREE.Mesh(new THREE.CylinderGeometry(0.085, 0.075, 0.36, 18), MAT.chrome);
+  shaft.rotation.x = Math.PI / 2; shaft.position.z = 0.22;
+
+  // Concave thumbpad cap (Lathe profile)
+  const capPts = [
+    new THREE.Vector2(0.0, 0.04),
+    new THREE.Vector2(0.18, 0.025),
+    new THREE.Vector2(0.30, 0.065),
+    new THREE.Vector2(0.32, 0.02),
+    new THREE.Vector2(0.28, -0.04),
+    new THREE.Vector2(0.09, -0.04),
+  ];
+  const capGeo = new THREE.LatheGeometry(capPts, 28);
+  capGeo.rotateX(Math.PI / 2);
+  const thumbCap = new THREE.Mesh(capGeo, MAT.rubber);
+  thumbCap.position.z = 0.42;
+  const capRim = new THREE.Mesh(new THREE.TorusGeometry(0.26, 0.016, 10, 28), MAT.brass);
+  capRim.position.z = 0.465;
+
+  stickPivot.add(boot, shaft, thumbCap, capRim);
+  fBot.add(stickPivot);
+  stickState.pivot = stickPivot;
+
+  const stickHit = new THREE.Mesh(
+    new THREE.CylinderGeometry(0.56, 0.56, 0.56, 16),
+    new THREE.MeshBasicMaterial({ visible: false })
+  );
+  stickHit.rotation.x = Math.PI / 2; stickHit.position.set(stickState.cx, stickState.cy, 1.98);
+  registerInteractive(stickHit, {
+    type: 'stick', face: 'bottom',
+    hint: '360° 類比靈動搖桿 · 任意方向推動後放開會彈性回中'
+  });
+  fBot.add(stickHit);
+
+  // --- Soft-Body Jelly Squish Dome ---
+  const sqRetainer = new THREE.Mesh(new THREE.TorusGeometry(0.55, 0.055, 16, 40), MAT.steel);
+  sqRetainer.position.set(squishState.cx, squishState.cy, 1.76);
+  const sqInnerOrb = new THREE.Mesh(new THREE.SphereGeometry(0.20, 20, 16), MAT.coreGlow);
+  sqInnerOrb.position.set(squishState.cx, squishState.cy, 1.88);
+
+  const sqGeo = createSquishDomeGeometry(0.52);
+  const sqMesh = new THREE.Mesh(sqGeo, MAT.squishGel);
+  sqMesh.position.set(squishState.cx, squishState.cy, 1.76);
+  registerInteractive(sqMesh, {
+    type: 'squish', face: 'bottom',
+    hint: '軟膠解壓捏捏球 · 按住揉捏變形，放開感受 Q 彈果凍震盪'
+  });
+
+  fBot.add(sqRetainer, sqInnerOrb, sqMesh);
+  squishState.geo = sqGeo;
+  squishState.innerOrb = sqInnerOrb;
+  shadows(fBot);
+}
+
+/* ============================================================================
+   8. ZEN INTERACTION COUNTER, CAMERA SNAP & POINTER INTERACTION ENGINE
+   ============================================================================ */
+let zenTotal = 0, comboCount = 0, lastZenAt = 0;
+const zenEl = document.getElementById('zenCount');
+const comboEl = document.getElementById('comboPill');
+function addZen(pts = 1) {
+  zenTotal += pts;
+  const now = performance.now();
+  comboCount = (now - lastZenAt < 1400) ? comboCount + 1 : 1;
+  lastZenAt = now;
+  zenEl.textContent = zenTotal;
+  comboEl.textContent = comboCount >= 3 ? `COMBO ×${comboCount}` : 'RELAXING';
+  comboEl.classList.remove('pop');
+  void comboEl.offsetWidth;
+  comboEl.classList.add('pop');
+}
+
+// Camera smooth tween
+let camTween = null;
+function snapToFace(faceId) {
+  document.querySelectorAll('.face-btn').forEach(b => b.classList.toggle('active', b.dataset.face === faceId));
+  const targetPos = faceId === 'iso'
+    ? new THREE.Vector3(6.2, 4.9, 6.8)
+    : new THREE.Vector3(...faceDefs.find(d => d.id === faceId).cam);
+  camTween = {
+    fromPos: camera.position.clone(),
+    toPos: targetPos,
+    fromTgt: controls.target.clone(),
+    toTgt: new THREE.Vector3(0, 0, 0),
+    t: 0
+  };
+}
+
+// Pointer raycasting & active gesture handling
+const raycaster = new THREE.Raycaster();
+const ndc = new THREE.Vector2();
+const dragPlane = new THREE.Plane();
+const hitWorld = new THREE.Vector3();
+let activeDrag = null;
+let hoverMeta = null;
+const hoverToast = document.getElementById('hover-toast');
+
+function setNDC(e) {
+  const rect = canvas.getBoundingClientRect();
+  ndc.x = ((e.clientX - rect.left) / rect.width) * 2 - 1;
+  ndc.y = -((e.clientY - rect.top) / rect.height) * 2 + 1;
+}
+
+function getFaceLocalPoint(faceId, zPlane = 1.90) {
+  const fg = faceGroups[faceId];
+  fg.updateWorldMatrix(true, false);
+  const p0 = new THREE.Vector3(0, 0, zPlane).applyMatrix4(fg.matrixWorld);
+  const n = new THREE.Vector3(0, 0, 1).transformDirection(fg.matrixWorld);
+  dragPlane.setFromNormalAndCoplanarPoint(n, p0);
+  raycaster.setFromCamera(ndc, camera);
+  if (!raycaster.ray.intersectPlane(dragPlane, hitWorld)) return null;
+  const local = fg.worldToLocal(hitWorld.clone());
+  if (Math.abs(local.x) > 3.5 || Math.abs(local.y) > 3.5) return null;
+  return local;
+}
+
+function togglePopDome(d) {
+  d.target = d.target > 0 ? -1.0 : 1.0;
+  d.vel = d.target * 18;
+  SFX.playPop(d.target < 0, d.idx);
+  addZen(1);
+  // Check if all 9 popped inward
+  if (!popState.resetting && popState.domes.every(x => x.target < 0)) {
+    popState.resetting = true;
+    popState.resetTimer = 0.45;
+    SFX.playCascadeChime();
+    addZen(5);
+    const banner = document.getElementById('fx-banner');
+    banner.classList.add('show');
+    setTimeout(() => banner.classList.remove('show'), 2200);
+  }
+}
+
+canvas.addEventListener('pointerdown', (e) => {
+  SFX.init();
+  setNDC(e);
+  raycaster.setFromCamera(ndc, camera);
+  const hits = raycaster.intersectObjects(interactiveMeshes, false);
+  if (hits.length === 0) return;
+
+  const meta = hits[0].object.userData.interact;
+  controls.enabled = false;
+  camTween = null;
+  canvas.setPointerCapture(e.pointerId);
+
+  if (meta.type === 'key') {
+    const sw = switchesState[meta.idx];
+    sw.target = 1;
+    if (!sw.isDown) { sw.isDown = true; SFX.playKey(true, meta.idx); addZen(1); }
+    activeDrag = { type: 'key', idx: meta.idx };
+  } else if (meta.type === 'pop') {
+    const d = popState.domes[meta.idx];
+    d.lastSwiped = performance.now();
+    togglePopDome(d);
+    activeDrag = { type: 'pop', lastIdx: meta.idx };
+  } else if (meta.type === 'dial') {
+    const lp = getFaceLocalPoint('right', 2.02);
+    const a = lp ? Math.atan2(lp.y - meta.cy, lp.x - meta.cx) : 0;
+    dialState.dragging = true;
+    dialState.lastPointerAngle = a;
+    dialState.vel = 0;
+    activeDrag = { type: 'dial', cx: meta.cx, cy: meta.cy };
+  } else if (meta.type === 'slider') {
+    const lp = getFaceLocalPoint('left', 1.94);
+    sliderState.dragging = true;
+    sliderState.grabOffset = lp ? (sliderState.y - lp.y) : 0;
+    sliderState.startY = sliderState.y;
+    sliderState.moved = false;
+    activeDrag = { type: 'slider' };
+  } else if (meta.type === 'toggle') {
+    toggleState.on = !toggleState.on;
+    toggleState.targetAngle = toggleState.on ? 0.48 : -0.48;
+    toggleState.vel = toggleState.on ? 12 : -12;
+    MAT.toggleLed.emissive = lin(toggleState.on ? 0x1aff9c : 0xff5a2a);
+    MAT.toggleLed.emissiveIntensity = toggleState.on ? 2.2 : 0.7;
+    SFX.playToggle(toggleState.on);
+    addZen(1);
+    activeDrag = { type: 'toggle' };
+  } else if (meta.type === 'balls') {
+    const lp = getFaceLocalPoint('back', 1.84);
+    const a = lp ? Math.atan2(lp.y - ballsState.cy, lp.x) : 0;
+    ballsState.dragging = true;
+    ballsState.lastAngle = a;
+    activeDrag = { type: 'balls', lastA: a };
+  } else if (meta.type === 'trackball') {
+    const lp = getFaceLocalPoint('back', 1.95);
+    trackballState.dragging = true;
+    if (lp) trackballState.lastPt.set(lp.x, lp.y);
+    activeDrag = { type: 'trackball' };
+  } else if (meta.type === 'stick') {
+    stickState.dragging = true;
+    activeDrag = { type: 'stick' };
+    updateStickFromPointer();
+  } else if (meta.type === 'squish') {
+    squishState.pressing = true;
+    squishState.target = 0.46;
+    SFX.playSquishBloop(false);
+    addZen(1);
+    activeDrag = { type: 'squish' };
+  }
+});
+
+function updateStickFromPointer() {
+  const lp = getFaceLocalPoint('bottom', 2.05);
+  if (!lp) return;
+  let dx = lp.x - stickState.cx;
+  let dy = lp.y - stickState.cy;
+  const dist = Math.hypot(dx, dy);
+  if (dist > stickState.maxR) {
+    if (Math.hypot(stickState.x, stickState.y) < stickState.maxR * 0.96) SFX.playStickThud();
+    dx = dx / dist * stickState.maxR;
+    dy = dy / dist * stickState.maxR;
+  }
+  stickState.x = dx; stickState.y = dy;
+  stickState.vx = 0; stickState.vy = 0;
+}
+
+canvas.addEventListener('pointermove', (e) => {
+  setNDC(e);
+  if (!activeDrag) {
+    raycaster.setFromCamera(ndc, camera);
+    const hits = raycaster.intersectObjects(interactiveMeshes, false);
+    if (hits.length > 0) {
+      const m = hits[0].object.userData.interact;
+      hoverMeta = m;
+      canvas.style.cursor = (m.type === 'key' || m.type === 'toggle') ? 'pointer' : 'grab';
+      hoverToast.textContent = m.hint;
+      hoverToast.classList.remove('dim');
+    } else if (hoverMeta) {
+      hoverMeta = null;
+      canvas.style.cursor = 'default';
+      hoverToast.textContent = '將滑鼠移至魔方六面機關即可互動 · 拖曳空白處旋轉角度';
+      hoverToast.classList.add('dim');
+    }
+    return;
+  }
+
+  canvas.style.cursor = 'grabbing';
+
+  if (activeDrag.type === 'pop') {
+    raycaster.setFromCamera(ndc, camera);
+    const hits = raycaster.intersectObjects(interactiveMeshes, false);
+    if (hits.length > 0) {
+      const m = hits[0].object.userData.interact;
+      if (m.type === 'pop' && m.idx !== activeDrag.lastIdx) {
+        const d = popState.domes[m.idx];
+        if (performance.now() - d.lastSwiped > 180) {
+          d.lastSwiped = performance.now();
+          togglePopDome(d);
+          activeDrag.lastIdx = m.idx;
+        }
+      }
+    }
+  } else if (activeDrag.type === 'dial') {
+    const lp = getFaceLocalPoint('right', 2.02);
+    if (lp) {
+      const a = Math.atan2(lp.y - activeDrag.cy, lp.x - activeDrag.cx);
+      let da = a - dialState.lastPointerAngle;
+      if (da > Math.PI) da -= TAU;
+      if (da < -Math.PI) da += TAU;
+      dialState.angle += da;
+      dialState.vel = clamp(da * 55, -26, 26);
+      dialState.lastPointerAngle = a;
+    }
+  } else if (activeDrag.type === 'slider') {
+    const lp = getFaceLocalPoint('left', 1.94);
+    if (lp) {
+      const ny = clamp(lp.y + sliderState.grabOffset, -0.62, 0.62);
+      if (Math.abs(ny - sliderState.startY) > 0.04) sliderState.moved = true;
+      sliderState.y = ny;
+      sliderState.vel = 0;
+      const nearest = Math.round(ny / 0.55);
+      if (nearest !== sliderState.lastDetent) {
+        sliderState.lastDetent = nearest;
+        sliderState.targetDetent = nearest;
+        SFX.playMagnetClack(true);
+        addZen(1);
+      }
+    }
+  } else if (activeDrag.type === 'balls') {
+    const lp = getFaceLocalPoint('back', 1.84);
+    if (lp) {
+      const a = Math.atan2(lp.y - ballsState.cy, lp.x);
+      let da = a - activeDrag.lastA;
+      if (da > Math.PI) da -= TAU;
+      if (da < -Math.PI) da += TAU;
+      // Impart impulse to nearest ball
+      let best = ballsState.balls[0], bestDist = 99;
+      for (const b of ballsState.balls) {
+        let diff = Math.abs(((b.angle - a + Math.PI) % TAU + TAU) % TAU - Math.PI);
+        if (diff < bestDist) { bestDist = diff; best = b; }
+      }
+      best.vel = clamp(best.vel + da * 48, -18, 18);
+      activeDrag.lastA = a;
+    }
+  } else if (activeDrag.type === 'trackball') {
+    const lp = getFaceLocalPoint('back', 1.95);
+    if (lp) {
+      const dx = lp.x - trackballState.lastPt.x;
+      const dy = lp.y - trackballState.lastPt.y;
+      trackballState.angVel.set(-dy * 45, dx * 45, 0);
+      trackballState.lastPt.set(lp.x, lp.y);
+      if (Math.hypot(dx, dy) > 0.04 && (!trackballState.lastZen || performance.now() - trackballState.lastZen > 280)) {
+        trackballState.lastZen = performance.now();
+        addZen(1);
+      }
+    }
+  } else if (activeDrag.type === 'stick') {
+    updateStickFromPointer();
+  } else if (activeDrag.type === 'squish') {
+    const lp = getFaceLocalPoint('bottom', 2.02);
+    if (lp) {
+      squishState.leanX = clamp(lp.x - squishState.cx, -0.4, 0.4);
+      squishState.leanY = clamp(lp.y - squishState.cy, -0.4, 0.4);
+    }
+  }
+});
+
+function releaseDrag(e) {
+  if (!activeDrag) return;
+  if (e && e.pointerId !== undefined && canvas.hasPointerCapture(e.pointerId)) {
+    canvas.releasePointerCapture(e.pointerId);
+  }
+  if (activeDrag.type === 'key') {
+    const sw = switchesState[activeDrag.idx];
+    sw.target = 0;
+    if (sw.isDown) { sw.isDown = false; SFX.playKey(false, activeDrag.idx); }
+  } else if (activeDrag.type === 'dial') {
+    dialState.dragging = false;
+  } else if (activeDrag.type === 'slider') {
+    sliderState.dragging = false;
+    if (!sliderState.moved) {
+      // Quick click cycles through 3 magnetic detents!
+      const seq = [1, 0, -1];
+      const next = seq[(seq.indexOf(sliderState.targetDetent) + 1) % 3];
+      sliderState.targetDetent = next;
+      sliderState.lastDetent = next;
+      SFX.playMagnetClack(true);
+      addZen(1);
+    }
+  } else if (activeDrag.type === 'balls') {
+    ballsState.dragging = false;
+    addZen(1);
+  } else if (activeDrag.type === 'trackball') {
+    trackballState.dragging = false;
+    addZen(1);
+  } else if (activeDrag.type === 'stick') {
+    stickState.dragging = false;
+    addZen(1);
+  } else if (activeDrag.type === 'squish') {
+    squishState.pressing = false;
+    squishState.target = 0;
+    squishState.vel = -7.5; // bouncy jello rebound!
+    squishState.leanX = 0;
+    squishState.leanY = 0;
+    SFX.playSquishBloop(true);
+  }
+  activeDrag = null;
+  controls.enabled = true;
+  canvas.style.cursor = hoverMeta ? 'grab' : 'default';
+}
+canvas.addEventListener('pointerup', releaseDrag);
+canvas.addEventListener('pointercancel', releaseDrag);
+
+// Keyboard support for Top Switches (Q/W/E/R) and Face Cameras (0..6)
+const KEY_MAP = { KeyQ: 0, KeyW: 1, KeyE: 2, KeyR: 3 };
+const FACE_KEYS = { Digit0: 'iso', Digit1: 'top', Digit2: 'front', Digit3: 'right', Digit4: 'left', Digit5: 'back', Digit6: 'bottom' };
+
+window.addEventListener('keydown', (e) => {
+  if (e.repeat || e.target.tagName === 'INPUT') return;
+  if (e.code in KEY_MAP) {
+    SFX.init();
+    const idx = KEY_MAP[e.code];
+    const sw = switchesState[idx];
+    sw.target = 1;
+    if (!sw.isDown) { sw.isDown = true; SFX.playKey(true, idx); addZen(1); }
+  } else if (e.code in FACE_KEYS) {
+    snapToFace(FACE_KEYS[e.code]);
+  }
+});
+
+window.addEventListener('keyup', (e) => {
+  if (e.code in KEY_MAP) {
+    const idx = KEY_MAP[e.code];
+    const sw = switchesState[idx];
+    sw.target = 0;
+    if (sw.isDown) { sw.isDown = false; SFX.playKey(false, idx); }
+  }
+});
+
+/* ============================================================================
+   9. UI EVENTS & EXPORTERS (.STL, .OBJ, .GLB, PNG)
+   ============================================================================ */
+let explodeTarget = 0, explodeVal = 0;
+let floatEnabled = true;
+const cubeSpinVel = new THREE.Vector3(0, 0, 0);
+
+document.getElementById('toggle-panel-btn').onclick = () => {
+  document.getElementById('studio-panel').classList.toggle('collapsed');
+};
+
+document.getElementById('themeGrid').onclick = (e) => {
+  const btn = e.target.closest('.btn-chip');
+  if (!btn) return;
+  document.querySelectorAll('#themeGrid .btn-chip').forEach(b => b.classList.remove('active'));
+  btn.classList.add('active');
+  applyTheme(btn.dataset.theme);
+};
+
+document.getElementById('switchTypeRow').onclick = (e) => {
+  const btn = e.target.closest('.seg-btn');
+  if (!btn) return;
+  document.querySelectorAll('#switchTypeRow .seg-btn').forEach(b => b.classList.remove('active'));
+  btn.classList.add('active');
+  SFX.switchType = btn.dataset.sw;
+  SFX.playKey(true, 0);
+  setTimeout(() => SFX.playKey(false, 0), 90);
+};
+
+document.getElementById('explodeSlider').oninput = (e) => {
+  explodeTarget = Number(e.target.value) / 100;
+  document.getElementById('explodeVal').textContent = e.target.value + '%';
+};
+
+document.getElementById('volSlider').oninput = (e) => {
+  const v = Number(e.target.value) / 100;
+  SFX.setVolume(v);
+  document.getElementById('volVal').textContent = e.target.value + '%';
+};
+
+document.getElementById('tgSound').onchange = (e) => SFX.setEnabled(e.target.checked);
+document.getElementById('tgPentatonic').onchange = (e) => SFX.pentatonic = e.target.checked;
+document.getElementById('tgPedestal').onchange = (e) => pedestalGroup.visible = e.target.checked;
+document.getElementById('tgFloat').onchange = (e) => floatEnabled = e.target.checked;
+document.getElementById('tgAutoSpin').onchange = (e) => controls.autoRotate = e.target.checked;
+
+document.getElementById('faceBar').onclick = (e) => {
+  const btn = e.target.closest('.face-btn');
+  if (btn) snapToFace(btn.dataset.face);
+};
+
+document.getElementById('btnThrowCube').onclick = () => {
+  SFX.init();
+  cubeSpinVel.set((Math.random() - 0.5) * 10, (Math.random() > 0.5 ? 1 : -1) * (8 + Math.random() * 5), (Math.random() - 0.5) * 8);
+  addZen(2);
+};
+
+document.getElementById('btnResetPop').onclick = () => {
+  SFX.init();
+  popState.resetting = false;
+  popState.domes.forEach((d, i) => {
+    setTimeout(() => {
+      if (d.target < 0) { d.target = 1.0; d.vel = 16; SFX.playPop(false, i); }
+    }, i * 35);
+  });
+};
+
+function downloadBlob(blob, filename) {
+  const url = URL.createObjectURL(blob);
+  const a = document.createElement('a');
+  a.href = url; a.download = filename;
+  a.click();
+  setTimeout(() => URL.revokeObjectURL(url), 1000);
+}
+
+function exportBinarySTL(root) {
+  root.updateMatrixWorld(true);
+  const tris = [];
+  const vA = new THREE.Vector3(), vB = new THREE.Vector3(), vC = new THREE.Vector3();
+  const cb = new THREE.Vector3(), ab = new THREE.Vector3();
+
+  root.traverse((obj) => {
+    if (!obj.isMesh || !obj.visible || obj.material.visible === false) return;
+    const g = obj.geometry;
+    const pos = g.attributes.position;
+    if (!pos) return;
+    const idx = g.index;
+    const count = idx ? idx.count : pos.count;
+    for (let i = 0; i < count; i += 3) {
+      const a = idx ? idx.getX(i) : i;
+      const b = idx ? idx.getX(i + 1) : i + 1;
+      const c = idx ? idx.getX(i + 2) : i + 2;
+      vA.fromBufferAttribute(pos, a).applyMatrix4(obj.matrixWorld);
+      vB.fromBufferAttribute(pos, b).applyMatrix4(obj.matrixWorld);
+      vC.fromBufferAttribute(pos, c).applyMatrix4(obj.matrixWorld);
+      cb.subVectors(vC, vB); ab.subVectors(vA, vB); cb.cross(ab).normalize();
+      tris.push([cb.x, cb.y, cb.z, vA.x, vA.y, vA.z, vB.x, vB.y, vB.z, vC.x, vC.y, vC.z]);
+    }
+  });
+
+  const buf = new ArrayBuffer(84 + tris.length * 50);
+  const dv = new DataView(buf);
+  const hdr = 'TACTILE-06 Precision Fidget Cube Binary STL';
+  for (let i = 0; i < hdr.length; i++) dv.setUint8(i, hdr.charCodeAt(i));
+  dv.setUint32(80, tris.length, true);
+  let off = 84;
+  for (const t of tris) {
+    for (let j = 0; j < 12; j++) { dv.setFloat32(off, t[j], true); off += 4; }
+    dv.setUint16(off, 0, true); off += 2;
+  }
+  return new Blob([buf], { type: 'application/octet-stream' });
+}
+
+function withCleanCube(fn, isAsync = false) {
+  const prevY = cubeRoot.position.y;
+  cubeRoot.position.y = 0;
+  const saved = hitMeshes.map(m => ({ m, parent: m.parent }));
+  saved.forEach(({ m, parent }) => { if (parent) parent.remove(m); });
+  const restore = () => {
+    saved.forEach(({ m, parent }) => { if (parent) parent.add(m); });
+    cubeRoot.position.y = prevY;
+  };
+  if (isAsync) {
+    fn(restore);
+  } else {
+    try { return fn(); } finally { restore(); }
+  }
+}
+
+document.getElementById('btnExportSTL').onclick = () => {
+  const blob = withCleanCube(() => exportBinarySTL(cubeRoot));
+  downloadBlob(blob, 'Tactile_Fidget_Cube.stl');
+};
+
+document.getElementById('btnExportOBJ').onclick = () => {
+  const str = withCleanCube(() => new THREE.OBJExporter().parse(cubeRoot));
+  downloadBlob(new Blob([str], { type: 'text/plain' }), 'Tactile_Fidget_Cube.obj');
+};
+
+document.getElementById('btnExportGLB').onclick = () => {
+  withCleanCube((restore) => {
+    new THREE.GLTFExporter().parse(cubeRoot, (res) => {
+      restore();
+      downloadBlob(new Blob([res], { type: 'model/gltf-binary' }), 'Tactile_Fidget_Cube.glb');
+    }, { binary: true });
+  }, true);
+};
+
+document.getElementById('btnShot').onclick = () => {
+  composer.render();
+  canvas.toBlob((blob) => downloadBlob(blob, 'Tactile_Fidget_Cube_4K.png'));
+};
+
+/* ============================================================================
+   10. PHYSICS STEP & ANIMATION LOOP
+   ============================================================================ */
+let prevTime = performance.now();
+let elapsed = 0;
+
+function stepPhysics(dt) {
+  // 1) Exploded view & subtle levitation float & auto-hide pedestal when inspecting bottom face
+  explodeVal = lerp(explodeVal, explodeTarget, 1 - Math.exp(-10 * dt));
+  for (const def of faceDefs) {
+    faceGroups[def.id].position.copy(faceGroups[def.id].userData.normal).multiplyScalar(explodeVal * 1.42);
+  }
+  const showPed = document.getElementById('tgPedestal').checked && camera.position.y > -1.8;
+  pedestalGroup.visible = showPed;
+  floorPlane.visible = showPed;
+  innerCore.rotation.y += dt * 0.4;
+  if (floatEnabled && !activeDrag) {
+    cubeRoot.position.y = Math.sin(elapsed * 1.65) * 0.085;
+  } else if (!floatEnabled) {
+    cubeRoot.position.y = lerp(cubeRoot.position.y, 0, 1 - Math.exp(-8 * dt));
+  }
+
+  // Cube spin impulse decay ("Throw cube" toy physics)
+  if (cubeSpinVel.lengthSq() > 0.0001) {
+    cubeRoot.rotation.x += cubeSpinVel.x * dt;
+    cubeRoot.rotation.y += cubeSpinVel.y * dt;
+    cubeRoot.rotation.z += cubeSpinVel.z * dt;
+    cubeSpinVel.multiplyScalar(Math.exp(-2.4 * dt));
+  } else if (cubeRoot.rotation.x !== 0 || cubeRoot.rotation.y !== 0 || cubeRoot.rotation.z !== 0) {
+    // Gently return to nearest clean orientation? No—leave at spun angle unless tiny!
+    if (Math.abs(cubeRoot.rotation.x) + Math.abs(cubeRoot.rotation.y) + Math.abs(cubeRoot.rotation.z) < 0.005) {
+      cubeRoot.rotation.set(0, 0, 0);
+    }
+  }
+
+  // 2) Top Mechanical Switches spring dynamics
+  for (const sw of switchesState) {
+    const acc = (sw.target - sw.press) * 680 - sw.vel * 32;
+    sw.vel += acc * dt;
+    sw.press = clamp(sw.press + sw.vel * dt, -0.05, 1.05);
+    sw.mover.position.z = sw.baseZ - sw.press * sw.travel;
+    sw.springMesh.scale.z = clamp(1 - sw.press * 0.55, 0.35, 1.05);
+    const targetGlow = sw.target > 0.5 ? 2.6 : 0.45;
+    sw.glow = lerp(sw.glow, targetGlow, 1 - Math.exp(-(sw.target > 0.5 ? 28 : 6) * dt));
+    sw.ledMat.emissiveIntensity = sw.glow;
+  }
+
+  // 3) Pop-It Domes bistable snap + cascade reset
+  if (popState.resetting) {
+    popState.resetTimer -= dt;
+    if (popState.resetTimer <= 0) {
+      popState.resetting = false;
+      popState.domes.forEach((d, i) => {
+        setTimeout(() => {
+          d.target = 1.0; d.vel = 15;
+          SFX.playPop(false, i);
+        }, i * 52);
+      });
+    }
+  }
+  for (const d of popState.domes) {
+    if (Math.abs(d.val - d.target) > 0.001 || Math.abs(d.vel) > 0.001) {
+      const acc = (d.target - d.val) * 380 - d.vel * 16;
+      d.vel += acc * dt;
+      d.val = clamp(d.val + d.vel * dt, -1.25, 1.25);
+      updatePopDomeVertices(d.geo, 0.34, d.val);
+      d.mat.emissiveIntensity = d.val < 0 ? 0.36 : 0.08;
+    }
+  }
+
+  // 4) Ratchet Dial + Meshed Involute Gears + Pawl bounce
+  if (!dialState.dragging) {
+    // Magnetic/spring 24-detent notch torque + damping
+    const step = TAU / 24;
+    const nearest = Math.round(dialState.angle / step) * step;
+    const detentTorque = Math.sin(24 * dialState.angle) * -14;
+    if (Math.abs(dialState.vel) < 4.5) {
+      dialState.vel += (nearest - dialState.angle) * 85 * dt;
+    } else {
+      dialState.vel += detentTorque * dt;
+    }
+    dialState.vel *= Math.exp(-2.8 * dt);
+    dialState.angle += dialState.vel * dt;
+  }
+  const detentIdx = Math.round(dialState.angle / (TAU / 24));
+  if (detentIdx !== dialState.lastDetent) {
+    dialState.lastDetent = detentIdx;
+    dialState.pawlBounce = 1.0;
+    SFX.playRatchetTick(dialState.vel);
+    addZen(1);
+  }
+  dialState.pawlBounce *= Math.exp(-26 * dt);
+
+  const gm = gearMeshes;
+  const th1 = dialState.angle;
+  // Exact phase-locked meshing angles in local XY plane (rotation.z)
+  const th2 = -(gm.G1.N / gm.G2.N) * (th1 - gm.a12) + gm.a12 + Math.PI + Math.PI / gm.G2.N;
+  const th3 = -(gm.G2.N / gm.G3.N) * (th2 - gm.a23) + gm.a23 + Math.PI + Math.PI / gm.G3.N;
+  gm.g1Mesh.rotation.z = th1;
+  gm.ratchetMesh.rotation.z = th1;
+  gm.dialGroup.rotation.z = th1;
+  gm.g2Mesh.rotation.z = th2;
+  gm.g3Mesh.rotation.z = th3;
+  gm.pawlPivot.rotation.z = dialState.pawlBounce * 0.16;
+
+  // 5) Magnetic Haptic Slider (3 detent wells: -0.55, 0, +0.55)
+  if (!sliderState.dragging) {
+    const goalY = sliderState.targetDetent * 0.55;
+    const acc = (goalY - sliderState.y) * 420 - sliderState.vel * 22;
+    sliderState.vel += acc * dt;
+    sliderState.y = clamp(sliderState.y + sliderState.vel * dt, -0.65, 0.65);
+  }
+  sliderState.mesh.position.y = sliderState.y;
+
+  // 6) Aircraft Toggle Switch snap
+  const tAcc = (toggleState.targetAngle - toggleState.angle) * 520 - toggleState.vel * 20;
+  toggleState.vel += tAcc * dt;
+  toggleState.angle += toggleState.vel * dt;
+  toggleState.pivot.rotation.x = -toggleState.angle;
+
+  // 7) Orbital Steel Balls elastic 1D ring collisions
+  const bs = ballsState.balls;
+  const minSep = 2 * Math.asin(ballsState.rBall / ballsState.R) * 1.02;
+  for (const b of bs) {
+    b.angle += b.vel * dt;
+    b.vel *= Math.exp(-0.95 * dt);
+  }
+  // Multi-pass elastic collision solver on circle
+  for (let pass = 0; pass < 3; pass++) {
+    for (let i = 0; i < bs.length; i++) {
+      for (let j = i + 1; j < bs.length; j++) {
+        let diff = bs[j].angle - bs[i].angle;
+        diff = ((diff + Math.PI) % TAU + TAU) % TAU - Math.PI;
+        const dist = Math.abs(diff);
+        if (dist < minSep) {
+          const sign = diff >= 0 ? 1 : -1;
+          const overlap = (minSep - dist) * 0.5;
+          bs[i].angle -= sign * overlap;
+          bs[j].angle += sign * overlap;
+          const relV = (bs[j].vel - bs[i].vel) * sign;
+          if (relV < 0) {
+            const imp = -(1 + 0.88) * relV * 0.5;
+            bs[i].vel -= sign * imp;
+            bs[j].vel += sign * imp;
+            if (Math.abs(relV) > 0.6) SFX.playBallClink(Math.abs(relV));
+          }
+        }
+      }
+    }
+  }
+  for (const b of bs) {
+    b.mesh.position.set(
+      Math.cos(b.angle) * ballsState.R,
+      ballsState.cy + Math.sin(b.angle) * ballsState.R,
+      1.84
+    );
+  }
+
+  // 8) Heavy Chrome Trackball 3D angular inertia
+  const spd = trackballState.angVel.length();
+  if (spd > 0.001) {
+    const q = new THREE.Quaternion().setFromAxisAngle(trackballState.angVel.clone().normalize(), spd * dt);
+    trackballState.mesh.quaternion.premultiply(q);
+    if (!trackballState.dragging) trackballState.angVel.multiplyScalar(Math.exp(-1.8 * dt));
+  }
+
+  // 9) 360° Analog Thumbstick spring-return
+  if (!stickState.dragging) {
+    stickState.vx += (-stickState.x * 260 - stickState.vx * 13) * dt;
+    stickState.vy += (-stickState.y * 260 - stickState.vy * 13) * dt;
+    stickState.x += stickState.vx * dt;
+    stickState.y += stickState.vy * dt;
+  }
+  stickState.pivot.rotation.y = stickState.x * 0.95;
+  stickState.pivot.rotation.x = -stickState.y * 0.95;
+
+  // 10) Soft-Body Jelly Squish Dome harmonic wobble
+  const sqAcc = (squishState.target - squishState.val) * 310 - squishState.vel * 7.5;
+  squishState.vel += sqAcc * dt;
+  squishState.val += squishState.vel * dt;
+  if (Math.abs(squishState.val) > 0.0005 || Math.abs(squishState.vel) > 0.0005) {
+    updateSquishDomeVertices(squishState.geo, squishState.val, squishState.leanX, squishState.leanY);
+    squishState.innerOrb.scale.set(1 + squishState.val * 0.35, 1 + squishState.val * 0.35, 1 - squishState.val * 0.45);
+  }
+}
+
+function animate(now) {
+  requestAnimationFrame(animate);
+  const dt = Math.min(0.033, (now - prevTime) / 1000);
+  prevTime = now;
+  elapsed += dt;
+
+  // Smooth camera face tween
+  if (camTween) {
+    camTween.t = Math.min(1, camTween.t + dt * 2.5);
+    const e = 1 - Math.pow(1 - camTween.t, 3);
+    camera.position.lerpVectors(camTween.fromPos, camTween.toPos, e);
+    controls.target.lerpVectors(camTween.fromTgt, camTween.toTgt, e);
+    if (camTween.t >= 1) camTween = null;
+  }
+
+  stepPhysics(dt);
+  controls.update();
+  composer.render();
+}
+
+window.addEventListener('resize', () => {
+  camera.aspect = innerWidth / innerHeight;
+  camera.updateProjectionMatrix();
+  renderer.setSize(innerWidth, innerHeight);
+  composer.setSize(innerWidth, innerHeight);
+  bloomPass.setSize(innerWidth, innerHeight);
+});
+
+applyTheme('obsidian');
+if (location.hash) {
+  const hp = new URLSearchParams(location.hash.slice(1));
+  if (hp.get('theme') && THEMES[hp.get('theme')]) {
+    applyTheme(hp.get('theme'));
+    document.querySelectorAll('#themeGrid .btn-chip').forEach(b => b.classList.toggle('active', b.dataset.theme === hp.get('theme')));
+  }
+  if (hp.get('explode')) {
+    explodeTarget = explodeVal = clamp(Number(hp.get('explode')), 0, 1);
+    document.getElementById('explodeSlider').value = Math.round(explodeVal * 100);
+    document.getElementById('explodeVal').textContent = Math.round(explodeVal * 100) + '%';
+  }
+  if (hp.get('view')) {
+    const vd = faceDefs.find(d => d.id === hp.get('view'));
+    if (vd) {
+      camera.position.set(...vd.cam);
+      controls.target.set(0, 0, 0);
+      document.querySelectorAll('.face-btn').forEach(b => b.classList.toggle('active', b.dataset.face === vd.id));
+    }
+  }
+}
+requestAnimationFrame(animate);
+setTimeout(() => {
+  const ld = document.getElementById('loader');
+  ld.style.opacity = '0';
+  setTimeout(() => ld.remove(), 450);
+}, 280);
+</script>
+</body>
+</html>
